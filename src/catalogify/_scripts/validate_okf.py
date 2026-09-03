@@ -13,8 +13,10 @@ ERRORS (bundle is non-conformant):
         (root index.md may carry only okf_version per §11)
       - log.md date headings not in ISO 8601 YYYY-MM-DD form (§7)
   E4  log.md date block missing a required `Commit: \\`<sha>\\`` line, or
-      the line is present but not a valid hex commit SHA. This is an
-      ERROR because the update workflow depends on it to resume.
+      the line is present but is neither a valid hex commit SHA nor the
+      literal `none`. This is an ERROR because the update workflow depends
+      on it to resume. Skipped entirely outside a git repository, where
+      there is no commit to record.
 
 WARNINGS (consumers must tolerate; reported for quality):
   W0  PyYAML not installed — using the lenient fallback parser.
@@ -53,7 +55,9 @@ except ImportError:
 
 RESERVED = {"index.md", "log.md"}
 DATE_HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
-COMMIT_LINE = re.compile(r"^Commit:\s+`([0-9a-fA-F]{7,40})`\s*$")
+# A commit SHA, or the literal `none` for bundles generated outside a git
+# repository, where there is no commit to record.
+COMMIT_LINE = re.compile(r"^Commit:\s+`([0-9a-fA-F]{7,40}|none)`\s*$", re.I)
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 SECRET_PATTERNS = [
     # key: "value" / key = 'value' (quoted)
@@ -201,7 +205,7 @@ def check_index(path: str, rel: str, is_root: bool, bundle: str):
     check_links(body if fm is not None else text, rel, os.path.dirname(path), bundle)
 
 
-def check_log(path: str, rel: str):
+def check_log(path: str, rel: str, require_commit: bool = True):
     text, err = read_text(path)
     if text is None:
         errors.append(f"E1 {rel}: could not read file ({err})")
@@ -223,7 +227,7 @@ def check_log(path: str, rel: str):
             if m:
                 found_sha = m.group(1)
                 break
-        if found_sha is None:
+        if found_sha is None and require_commit:
             errors.append(f"E4 {rel}: date block '{stripped}' missing required 'Commit: `<sha>`' line")
 
 
@@ -289,6 +293,9 @@ def main() -> int:
 
     bundle = os.path.abspath(args.bundle_dir)
     repo_root = os.path.abspath(args.repo_root) if args.repo_root else find_repo_root(bundle)
+    # Bundles generated outside a git repository have no commit to record in
+    # log.md, so E4 cannot apply to them.
+    is_git_repo = os.path.isdir(os.path.join(repo_root, ".git"))
     exclude_patterns = load_config_excludes(args.config) + list(args.exclude)
 
     if not HAVE_YAML:
@@ -312,7 +319,7 @@ def main() -> int:
             if f == "index.md":
                 check_index(path, rel, dirpath == bundle, bundle)
             elif f == "log.md":
-                check_log(path, rel)
+                check_log(path, rel, require_commit=is_git_repo)
             else:
                 concepts += 1
                 check_concept(path, rel, bundle, repo_root)

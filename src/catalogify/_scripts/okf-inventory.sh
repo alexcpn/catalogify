@@ -117,8 +117,13 @@ import json, sys
 print(json.dumps([l for l in sys.stdin.read().splitlines() if l.strip()]))'; }
 
 # --- collect ---------------------------------------------------------------
+# Whether this is a git repo at all. Everything git-derived below is empty
+# when it is not, and consumers should branch on this rather than on an
+# empty string that could equally mean "no remote configured".
+# Python literals: this value is interpolated into the emitter heredoc below.
+if git rev-parse --git-dir >/dev/null 2>&1; then IS_GIT_REPO=True; else IS_GIT_REPO=False; fi
 REMOTE="$(git remote get-url origin 2>/dev/null || echo "")"
-BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")"
+BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
 HEAD_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo "")"
 
 # --- git history signals ---------------------------------------------------
@@ -259,6 +264,7 @@ churn = churn_list("""$CHURN""")
 inv = {
   "root": os.getcwd(),
   "git": {
+    "is_git_repo": $IS_GIT_REPO,
     "remote": """$REMOTE""",
     "branch": """$BRANCH""",
     "head": """$HEAD_SHA""",
@@ -280,7 +286,10 @@ with open(sys.argv[1], "w") as f:
     json.dump(inv, f, indent=2)
 
 print(f"Inventory written to {sys.argv[1]}")
-print(f"  files: {inv['file_count']}  head: {inv['git']['head']}  branch: {inv['git']['branch']}")
+if inv["git"]["is_git_repo"]:
+    print(f"  files: {inv['file_count']}  head: {inv['git']['head']}  branch: {inv['git']['branch']}")
+else:
+    print(f"  files: {inv['file_count']}  (not a git repository - no history signals)")
 hist = inv["git"]["history"]
 print(f"  git history: {hist['commits_scanned']} commits scanned, "
       f"{len(hist['churn'])} hot files, {len(hist['recent_commits'])} recent subjects")

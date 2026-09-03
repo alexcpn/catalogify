@@ -52,8 +52,11 @@ subsystem, a granularity preference); otherwise cover the whole repo.
    - `recent_commits` — recent non-merge subjects, a cheap first read on
      what the project has been doing lately.
    - Use these to prioritize; pull the deeper per-concept "why" in Phase 2
-     with `catalogify history` (below). If not a git repo, `git.history` is
-     empty — skip history-based reasoning rather than inventing it.
+     with `catalogify history` (below). If `git.is_git_repo` is `false`,
+     `git.history` is empty — skip history-based reasoning rather than
+     inventing it, take `timestamp` from file modification time, and expect
+     to raise more `open_questions`, because without history the "why" can
+     only come from a human.
 5. Determine `resource_base`: from config, else from
    `git remote get-url origin` + default branch (convert SSH form to an
    `https://.../blob/<branch>/{path}` form). If the repo has no remote,
@@ -337,6 +340,12 @@ The `Commit:` line is REQUIRED and machine-checked (validator rule E4) —
 it is what the **update** workflow reads to resume incrementally. Always
 write it as the first line under the date heading, exactly in that
 backtick-quoted form.
+
+**Outside a git repository**, write ``Commit: `none` ``. The validator
+accepts that in place of a SHA, so the bundle is still conformant. Note in
+the log entry that it was generated without history, and tell the user that
+incremental update stays unavailable until the project is under version
+control.
 
 ## Phase 3 — Validate and report
 
