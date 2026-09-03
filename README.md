@@ -7,8 +7,13 @@
 `catalogify` generates an [Open Knowledge Format (OKF v0.1)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 bundle: a directory of cross-linked markdown concepts with YAML frontmatter
 describing a codebase's services, modules, APIs, data models and operations.
-It mines git history for the reasoning behind the code, and parks what it
-cannot establish as an open question instead of inventing an answer.
+Where git is available it mines the history for the reasoning behind the code,
+and whatever it cannot establish it parks as an open question rather than
+inventing an answer.
+
+- **Monorepo or single repo.** One `Service` concept per deployable unit, scoped by folder — a repo with hundreds of services produces the same shape, just wider.
+- **Cheap on large codebases.** Scanning 25,917 files and 500,022 lines of Kubernetes takes 2.1 seconds. A service entry is ~676 tokens whether the service is 10k lines or 100k.
+- **Git optional.** History mining and incremental updates need it; everything else does not.
 
 It installs as a portable **Agent Skill**, so it works in Claude Code, Cursor,
 OpenAI Codex, and anything else that reads the open `.agents/skills` standard.
@@ -34,23 +39,60 @@ shallow. You need a little about everything.
 **Reaching** — *inside that service, what changes?* Narrow and deep. You need
 everything about a little.
 
-Structural code graphs are excellent at reaching and will beat prose every
-time. `catalogify` targets routing, where the winning property is being small
-enough that an agent can read the whole estate in one call.
+A code graph such as [Graphify](https://github.com/Graphify-Labs/graphify) —
+which parses your code with tree-sitter and builds a queryable graph of every
+symbol and call edge — is excellent at reaching and will beat prose every
+time. Ask it "what breaks if I change this function" and it answers precisely.
+`catalogify` targets routing instead, where the winning property is being
+small enough that an agent can read the whole estate in one call.
+
+The two compose well: route with catalogify to pick the services, then run
+Graphify inside the one you picked. They are not alternatives.
 
 Measured on `pkg/kubelet` from `kubernetes/kubernetes` (108,648 lines of Go),
-against a structural graph built over the same directory:
+with Graphify run over the same directory:
 
 | Artifact | Size | Tokens |
 | --- | ---: | ---: |
-| Structural `graph.json` | 14.5 MB | 3,813,486 |
-| Its markdown wiki (446 articles) | 1,004 KB | 256,968 |
+| Graphify `graph.json` | 14.5 MB | 3,813,486 |
+| Graphify `wiki/` (446 articles) | 1,004 KB | 256,968 |
 | catalogify bundle (9 concepts) | 21.9 KB | 5,596 |
 | **catalogify service entry** | **2.6 KB** | **676** |
 
 At 676 tokens per service, a 90-service catalog is roughly **61,000 tokens**
 and fits in one call alongside the specification. See [Benchmark](#benchmark)
 to reproduce these numbers.
+
+## What it runs on
+
+**Monorepos and single repos alike.** Concepts are scoped by folder, so a
+repository holding hundreds of services gets one `Service` concept per
+deployable unit and its own `modules/`, `apis/` and `data/` concepts
+underneath — the same shape a single-service repo produces, just wider. Point
+it at the whole tree or at one subdirectory.
+
+**Large codebases stay cheap**, because the catalog describes the repo rather
+than reproducing it. Scanning all of `kubernetes/kubernetes` — **25,917 files
+and 500,022 lines of Go** — takes **2.1 seconds** and yields a 56 KB inventory
+(~14,000 tokens) for the agent to plan from. Cost scales with the number of
+things worth naming, not with lines of code: a service entry is ~676 tokens
+whether the service is 10k lines or 100k.
+
+**With or without git.** History mining is a bonus, not a requirement:
+
+| | With git | Without git |
+| --- | --- | --- |
+| Inventory, concepts, indexes, validation | yes | yes |
+| Churn ranking, the "why" from reverts and hotfixes | yes | — |
+| Commit citations, `resource:` URLs from the remote | yes | — |
+| Incremental `update` | yes | — (re-run `generate`) |
+| Conformant bundle | yes | yes |
+
+Outside a repository the inventory reports `git.is_git_repo: false`, `history`
+prints a notice and exits cleanly, timestamps come from file modification
+times, and `log.md` records ``Commit: `none` ``, which the validator accepts.
+The agent is told to raise more `open_questions` in that case, since without
+history the reasoning behind the code can only come from you.
 
 ## What a concept looks like
 
@@ -116,8 +158,8 @@ package's previous life as `okf_skill`.
 ## Requirements
 
 - **Python 3.9+**
-- **`git`** — the inventory and history tools are git-driven. They degrade cleanly on a non-git directory, but the reasoning comes from history.
 - **`bash`** — present on Linux and macOS; on Windows the wrapper finds the `bash.exe` that ships with [Git for Windows](https://git-scm.com/download/win).
+- **`git`** — *optional*. Used for churn ranking, history mining and incremental updates. Everything else works without it; see [What it runs on](#what-it-runs-on).
 
 ## Install
 
@@ -192,7 +234,7 @@ To reproduce the table above:
 git clone --filter=blob:none --no-tags \
   https://github.com/kubernetes/kubernetes.git k8s
 
-# structural graph, for comparison
+# Graphify, for comparison
 pip install graphifyy
 graphify update k8s/pkg/kubelet
 cd k8s/pkg/kubelet && graphify export wiki
