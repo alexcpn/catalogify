@@ -11,7 +11,7 @@ Where git is available it mines the history for the reasoning behind the code,
 and whatever it cannot establish it parks as an open question rather than
 inventing an answer.
 
-- **Monorepo or single repo.** One `Service` concept per deployable unit, scoped by folder — a repo with hundreds of services produces the same shape, just wider.
+- **Monorepo or single repo.** One `Service` concept per deployable unit, scoped by folder — a repo with hundreds of services produces the same directory layout as a single-service repo, just wider.
 - **Cheap on large codebases.** Scanning 25,917 files and 500,022 lines of Kubernetes takes 2.1 seconds. A service entry is ~676 tokens whether the service is 10k lines or 100k.
 - **Git optional.** History mining and incremental updates need it; everything else does not.
 
@@ -68,8 +68,8 @@ to reproduce these numbers.
 **Monorepos and single repos alike.** Concepts are scoped by folder, so a
 repository holding hundreds of services gets one `Service` concept per
 deployable unit and its own `modules/`, `apis/` and `data/` concepts
-underneath — the same shape a single-service repo produces, just wider. Point
-it at the whole tree or at one subdirectory.
+underneath — the same directory layout a single-service repo produces, just
+wider. Point it at the whole tree or at one subdirectory.
 
 **Large codebases stay cheap**, because the catalog describes the repo rather
 than reproducing it. Scanning all of `kubernetes/kubernetes` — **25,917 files
