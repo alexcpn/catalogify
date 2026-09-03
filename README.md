@@ -125,6 +125,40 @@ the commit log by following a revert back to the commit it reverted.
 updates possible. `open_questions` is where uncertainty goes instead of into
 prose. Both are producer extension fields permitted by OKF §4.1.
 
+## Why mine history at all
+
+The gotcha in that example exists in no comment, no docstring, and no design
+document — in Kubernetes, a project with KEPs, a design-proposals archive, and
+reviewers who demand rationale. It survived only as a revert.
+
+That is not an oversight, it is the normal condition. Michael Polanyi called it
+tacit knowledge in 1966: *"we know more than we can tell."* Peter Naur applied
+it to software in [*Programming as Theory Building*](https://pages.cs.wisc.edu/~remzi/Naur.pdf)
+(1985), arguing that the real product of programming is the **theory** of the
+system held in the developers' heads, and that program text and documentation
+are insufficient carriers of it. A program whose original team has dispersed is,
+in his terms, dead — and a new team patching it produces characteristically
+wrong fixes that erode the system's conceptual integrity.
+
+That is precisely the position an AI agent is in on first contact with your
+repository. It arrives after the team has dispersed, holding the artefacts and
+none of the theory.
+
+Nor does writing a specification escape it. Fred Brooks, in *No Silver Bullet*:
+*"the complexity of software is an essential property, not an accidental one,"*
+so *"descriptions of a software entity that abstract away its complexity often
+abstract away its essence."* That ceiling applies whether a human or a model
+wrote the spec.
+
+Commit history is a narrow exception. Nobody writes a revert as documentation;
+they write it because production broke, leaving a dated, attributed, immutable
+record of a place where the theory and the code disagreed. `catalogify history`
+goes looking for exactly those.
+
+This recovers fragments, not the theory. For everything still missing, the
+generator raises an `open_question` and the clarify workflow asks a human while
+there is still a human to ask.
+
 ## The four workflows
 
 Ask in plain language and the skill picks one:
