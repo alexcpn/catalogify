@@ -1,0 +1,226 @@
+# catalogify
+
+**Turn a repository into a knowledge catalog your AI agent can afford to read.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+`catalogify` generates an [Open Knowledge Format (OKF v0.1)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+bundle: a directory of cross-linked markdown concepts with YAML frontmatter
+describing a codebase's services, modules, APIs, data models and operations.
+It mines git history for the reasoning behind the code, and parks what it
+cannot establish as an open question instead of inventing an answer.
+
+It installs as a portable **Agent Skill**, so it works in Claude Code, Cursor,
+OpenAI Codex, and anything else that reads the open `.agents/skills` standard.
+
+```bash
+uv tool install catalogify
+catalogify install
+```
+
+Then ask, in plain language:
+
+```
+"generate a knowledge catalog for this repo"
+```
+
+## Why it exists
+
+Giving an agent "context on the codebase" is two problems.
+
+**Routing** — *which of our 90 services does this spec touch?* Wide and
+shallow. You need a little about everything.
+
+**Reaching** — *inside that service, what changes?* Narrow and deep. You need
+everything about a little.
+
+Structural code graphs are excellent at reaching and will beat prose every
+time. `catalogify` targets routing, where the winning property is being small
+enough that an agent can read the whole estate in one call.
+
+Measured on `pkg/kubelet` from `kubernetes/kubernetes` (108,648 lines of Go),
+against a structural graph built over the same directory:
+
+| Artifact | Size | Tokens |
+| --- | ---: | ---: |
+| Structural `graph.json` | 14.5 MB | 3,813,486 |
+| Its markdown wiki (446 articles) | 1,004 KB | 256,968 |
+| catalogify bundle (9 concepts) | 21.9 KB | 5,596 |
+| **catalogify service entry** | **2.6 KB** | **676** |
+
+At 676 tokens per service, a 90-service catalog is roughly **61,000 tokens**
+and fits in one call alongside the specification. See [Benchmark](#benchmark)
+to reproduce these numbers.
+
+## What a concept looks like
+
+```markdown
+---
+type: Module
+title: Container Manager (cm)
+description: Owns cgroup hierarchy, CPU/memory/device allocation, and the
+  on-disk checkpoints that let those allocations survive a kubelet restart.
+tags: [cgroups, cpumanager, checkpoint, qos]
+source_files: [pkg/kubelet/cm]
+open_questions:
+  - "After the V2→V3 migration fix was reverted, is the V3→V2 hybrid-state
+     hazard still live, or was it addressed another way?"
+---
+
+# Gotchas
+
+Checkpoint format changes are the highest-risk edit in this module, and the
+hazard is the fallback path. When a V3 checkpoint has an invalid checksum,
+restore falls back to V2, but the V3 fields already read stay in the struct,
+producing a hybrid of V2 and V3 data (`83f1cae9656`, reverted by
+`76100602564`).
+```
+
+That gotcha is not in a comment, a docstring, or an ADR. It was recovered from
+the commit log by following a revert back to the commit it reverted.
+
+`source_files` maps the concept to code, which is what makes incremental
+updates possible. `open_questions` is where uncertainty goes instead of into
+prose. Both are producer extension fields permitted by OKF §4.1.
+
+## The four workflows
+
+Ask in plain language and the skill picks one:
+
+| Workflow | What it does |
+| -------- | ------------ |
+| **generate** | Inventory scan, git-history mining, concept plan, concept documents, `index.md` files, `log.md`, validation. |
+| **update** | Diffs since the last logged commit; refreshes only stale concepts, deprecates orphans, adds new ones, preserves human curation. |
+| **clarify** | Asks you about the `open_questions` the other workflows parked, then folds the answers in as cited, curation-protected knowledge. |
+| **validate** | OKF §9 conformance check plus a quality spot-check. |
+
+## Commands
+
+The deterministic work is three subcommands you can run yourself, with or
+without an agent. Each accepts `--help`.
+
+```bash
+catalogify inventory                        # repo facts + git churn, as JSON
+catalogify history pkg/foo --limit 5        # the reverts and hotfixes behind a path
+catalogify validate knowledge/              # OKF v0.1 §9 conformance
+catalogify install [--list] [--uninstall]   # manage the agent skill
+```
+
+- **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, plus per-file commit churn. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
+- **`history`** returns the creation commit, recent subjects, and the revert / hotfix / risk-flagged commits where invariants hide. Diff-free by default so historical secrets do not leak; `--patch` opts in.
+- **`validate`** enforces OKF §9: four error classes, nine warning classes.
+
+`okf-inventory`, `okf-history` and `okf-validate` remain as aliases from the
+package's previous life as `okf_skill`.
+
+## Requirements
+
+- **Python 3.9+**
+- **`git`** — the inventory and history tools are git-driven. They degrade cleanly on a non-git directory, but the reasoning comes from history.
+- **`bash`** — present on Linux and macOS; on Windows the wrapper finds the `bash.exe` that ships with [Git for Windows](https://git-scm.com/download/win).
+
+## Install
+
+```bash
+uv tool install catalogify     # or: pip install catalogify
+catalogify install
+```
+
+Restart your agent afterwards so it picks up the skill. `catalogify install`
+copies it into every agent's user-global skills directory
+(`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`,
+`~/.agents/skills`). Use `--agents claude,cursor` to target specific ones and
+`--scope project` to install into `./.<agent>/skills` instead.
+
+The bundled `install.sh` / `install.ps1` do both steps, install `uv` if it is
+missing, and fall back to `pip install --user`.
+
+## Usage
+
+```bash
+agent "generate a knowledge catalog for this repo"
+agent "refresh the catalog, the code has moved on"
+agent "resolve the open questions in the catalog"
+agent "validate the catalog"
+```
+
+Output lands in `knowledge/` (configurable), ready to commit next to the code:
+
+```
+knowledge/
+├── index.md            # okf_version: "0.1" + directory of everything
+├── log.md              # dated history, each block records a commit SHA
+├── architecture/
+│   └── overview.md     # type: Reference — the "start here" concept
+├── services/…          # type: Service
+├── modules/…           # type: Module
+├── apis/…              # type: API Endpoint / API Resource
+├── data/…              # type: Data Model / Database Table
+└── operations/…        # type: Pipeline / Configuration / Playbook
+```
+
+On a monorepo, start with `granularity: coarse` and raise
+`OKF_INVENTORY_CAP` above its default of 150. Raw churn skews toward generated
+files and build config, so invest in the `exclude` list.
+
+## Configuration
+
+Everything works with no config. To change the bundle directory, resource URI
+base, excludes, type mappings, layout, granularity, or the clarify question
+budget, copy the annotated template into your repo root:
+
+```bash
+cp ~/.claude/skills/catalogify/okf-config.template.yml .okf-config.yml
+```
+
+`catalogify inventory --config .okf-config.yml` and `catalogify validate <dir>
+--config .okf-config.yml` honor its `exclude` list; the agent passes it through
+automatically once the file exists.
+
+## Safety properties
+
+- **Never guesses.** Unverifiable facts become `open_questions`, resolved by the clarify workflow and marked with `<!-- clarified: ... -->` sentinels that later updates will not overwrite. Your answer outranks the machine's inference permanently.
+- **Never deletes curation.** Removed code marks a concept `status: deprecated` rather than deleting it. Human prose survives every refresh.
+- **Never emits secrets.** Config values are described by shape, never value, including from history. The validator flags anything that slips through (W5).
+- **Never touches source code.** All writes stay inside the bundle directory.
+
+## Benchmark
+
+To reproduce the table above:
+
+```bash
+git clone --filter=blob:none --no-tags \
+  https://github.com/kubernetes/kubernetes.git k8s
+
+# structural graph, for comparison
+pip install graphifyy
+graphify update k8s/pkg/kubelet
+cd k8s/pkg/kubelet && graphify export wiki
+wc -c graphify-out/graph.json          # 15,253,944
+cat graphify-out/wiki/*.md | wc -c     # 1,027,874
+
+# catalogify
+cd ../..                               # back to the k8s repo root
+catalogify inventory                   # 2.1s, 56 KB of JSON
+catalogify history pkg/kubelet/cm --limit 3
+
+# then ask your agent to generate the catalog, and check it:
+catalogify validate knowledge/
+```
+
+Token counts are bytes ÷ 4. Measured against `kubernetes/kubernetes` at commit
+`d5ccf7968e5`. The structural graph was built AST-only (no API key), so its
+wiki lacks LLM community labels.
+
+## Uninstall
+
+```bash
+catalogify install --uninstall    # remove from every agent's skills dir
+uv tool uninstall catalogify
+```
+
+Run `catalogify install --list` first to see where it is installed.
+
+## License
+
+MIT

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "catalogify"
+version = "0.5.0"
+description = "Turn a repository into a knowledge catalog an AI agent can afford to read: Open Knowledge Format concepts mined from code and git history."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Alex Punnen", email = "alexcpn@gmail.com" }]
+keywords = ["ai", "agents", "knowledge-graph", "documentation", "okf", "git", "claude", "llm"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Documentation",
+]
+# PyYAML makes the validator's frontmatter parsing exact; it falls back to a
+# lenient regex parser (and warns, W0) when it is missing.
+dependencies = ["PyYAML>=6.0"]
+
+[project.urls]
+Homepage = "https://github.com/alexcpn/catalogify"
+Repository = "https://github.com/alexcpn/catalogify"
+Issues = "https://github.com/alexcpn/catalogify/issues"
+
+[project.scripts]
+catalogify = "catalogify.cli:main"
+# Legacy aliases from the okf_skill package, kept so existing installs and
+# older write-ups keep working. `catalogify <cmd>` is the supported form.
+okf-inventory = "catalogify.runner:main_inventory"
+okf-history = "catalogify.runner:main_history"
+okf-validate = "catalogify.runner:main_validate"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"catalogify._scripts" = ["*.sh", "*.py"]
+"catalogify._skill_assets" = ["*.md", "*.yml", "references/*.md"]
