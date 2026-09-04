@@ -17,6 +17,9 @@ inventing an answer.
 
 It installs as a portable **Agent Skill**, so it works in Claude Code, Cursor,
 OpenAI Codex, and anything else that reads the open `.agents/skills` standard.
+For [Spec Kit](https://github.com/github/spec-kit) projects the same workflows
+ship as slash commands in
+[speckit_okf](https://github.com/alexcpn/speckit_okf).
 
 ```bash
 uv tool install catalogify
@@ -210,6 +213,31 @@ copies it into every agent's user-global skills directory
 
 The bundled `install.sh` / `install.ps1` do both steps, install `uv` if it is
 missing, and fall back to `pip install --user`.
+
+## Using it with Spec Kit
+
+The same four workflows are also packaged as a
+[Spec Kit](https://github.com/github/spec-kit) extension at
+**[alexcpn/speckit_okf](https://github.com/alexcpn/speckit_okf)**, for teams
+who prefer explicit slash commands over asking in plain language:
+
+```bash
+specify extension add okf --from \
+  https://github.com/alexcpn/speckit_okf/archive/refs/tags/v0.3.0.zip
+```
+
+| Spec Kit command | Equivalent here |
+| --- | --- |
+| `/speckit.okf.generate` | "generate a knowledge catalog for this repo" |
+| `/speckit.okf.update` | "refresh the catalog" |
+| `/speckit.okf.clarify` | "resolve the open questions" |
+| `/speckit.okf.validate` | `catalogify validate knowledge/` |
+
+Both produce the same OKF v0.1 bundle. Use `catalogify` if you want the
+standalone CLI and an agent skill that loads on its own; use the extension if
+your project already runs Spec Kit and you want the workflows as commands
+alongside your other `/speckit.*` ones. Installing both would register two
+skills covering the same ground, so pick one.
 
 ## Usage
 
