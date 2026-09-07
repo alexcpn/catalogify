@@ -93,6 +93,25 @@ Selection rules by granularity (default: medium):
   found in `adr_docs`, and mirror truly external decision records into
   `references/`.
 
+**Use co-change to find what churn and imports both miss.** Run:
+
+```bash
+catalogify cochange --depth 2            # repo-wide: the most coupled units
+catalogify cochange <dir> --depth 3      # what moves when this one moves
+```
+
+Two units that keep appearing in the same commit are coupled even when
+neither imports the other — a shared schema, a wire contract, a message
+topic, an ordering rule. Read the `lift` column, not just `confidence`: a
+unit that changes constantly (a staging tree, a generated directory) will
+co-occur with everything at a lift near 1 and means nothing, while a lift
+of 5+ on decent support is a real relationship. Two uses:
+
+- a high-lift partner with no concept of its own is usually a missing
+  concept — add it to the plan;
+- a high-lift partner that no import explains is exactly the kind of
+  hidden coupling worth writing down in Phase 2.
+
 **Use churn to break significance ties.** When deciding whether a
 borderline module/file warrants its own concept, consult `git.history.churn`
 from the inventory: high-churn files are both more important to explain and
@@ -122,7 +141,7 @@ timestamp: <ISO 8601 — the MOST RECENT commit time across this concept's sourc
             If a source file is untracked / has no git history, fall back to the current UTC time.>
 source_files:                     # extension field: repo-relative paths this concept derives from
   - path/to/file.py
-generated_by: catalogify/0.5.0   # producer extension (OKF §4.1)
+generated_by: catalogify/0.6.0   # producer extension (OKF §4.1)
 open_questions:                   # extension field: unresolved uncertainties (omit if none)
   - "Is the retry budget in submit_order() a hard SLA or a heuristic? Source is ambiguous."
 ```
@@ -215,6 +234,21 @@ Every internal import that resolves to another concept becomes a link,
 with the relationship named in prose ("calls", "reads from", "publishes
 to"). List external packages separately, unlinked. This is what makes the
 bundle traversable rather than a pile of independent files.
+
+Then add what the imports do not show. Run `catalogify cochange <dir>` and,
+for any partner with high `lift` that the import list does not already
+explain, add a line saying so and give the number:
+
+```markdown
+Changes together with [scheduler](/services/scheduler.md) in 31% of its
+commits (lift 6.2) despite sharing no import — they agree on the pod
+condition contract, so a change to one usually needs a change to the other.
+```
+
+Do not invent the mechanism. If you cannot establish *why* two units move
+together, say the coupling is observed and raise an `open_questions` entry
+asking what connects them. That question is often the single most useful
+thing in the concept.
 
 **4. `# Gotchas`** — the invariants and traps, each citing a commit (see
 history mining below). Omit the heading only if history genuinely
@@ -366,7 +400,30 @@ control.
 2. Fix any ERRORs (unparseable frontmatter, missing/empty `type`,
    malformed reserved files). WARNINGs (broken links, missing optional
    fields, unresolved `open_questions` — W8) are acceptable but list them.
-3. Report to the user: concept count by type, bundle tree, validation
+3. **Verify the claims, not just the structure:**
+
+   ```bash
+   catalogify verify "$BUNDLE_DIR"
+   ```
+
+   Every FINDING is a statement in the bundle that the repository does not
+   support, so fix it rather than explaining it away:
+
+   - **V1/V2** — you cited a commit that does not exist, or one that belongs
+     to another concept. Re-run `catalogify history` on this concept's own
+     `source_files` and cite from that.
+   - **V3** — you cited a `[TEST-ONLY]` commit as a gotcha. Delete the
+     claim. A leak or race fixed in a test file is not a property of the
+     production code.
+   - **V4** — a symbol in your `# Interfaces` table does not exist. You
+     wrote it from memory; grep for the real one.
+   - **V5** — a `# Gotchas` section asserts invariants and cites nothing.
+     Either cite the commit or delete the claim.
+
+   NOTEs are arguable and need judgement rather than obedience: **V6** often
+   means a real runtime coupling, and **V7** means you described Go packages
+   as an import cycle, which the compiler forbids.
+4. Report to the user: concept count by type, bundle tree, validation
    result, **how many concepts carry `open_questions`**, and suggested next
    steps:
    - review `architecture/overview.md` first;

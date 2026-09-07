@@ -24,7 +24,14 @@ Commands:
                                            touched; test-only commits are marked
                                            [TEST-ONLY]. Add --patch for diffs
                                            (careful: can surface old secrets).
-  validate <bundle_dir> [--config <cfg>]   Check a bundle against OKF v0.1 §9.
+  cochange [<path>...] [--depth N]         Directories that change together in
+           [--since D] [--json]            history: coupling that no import
+                                           graph or call graph can see.
+  validate <bundle_dir> [--config <cfg>]   Check a bundle against OKF v0.1 §9
+                                           (structure: is it well-formed?).
+  verify <bundle_dir> [--json] [--strict]  Check the bundle's CLAIMS against the
+                                           repo (truth: cited commits, symbols
+                                           and dependencies must resolve).
   install [--agents L] [--scope S]         Install the skill into your agents.
            [--list] [--uninstall]
 
@@ -60,6 +67,8 @@ def main(argv: list = None) -> int:
         "inventory": runner.inventory,
         "history": runner.history,
         "validate": runner.validate,
+        "verify": runner.verify,
+        "cochange": runner.cochange,
     }
     if command in dispatch:
         return dispatch[command](rest)

@@ -175,22 +175,27 @@ Ask in plain language and the skill picks one:
 
 ## Commands
 
-The deterministic work is three subcommands you can run yourself, with or
+The deterministic work is five subcommands you can run yourself, with or
 without an agent. Each accepts `--help`.
 
 ```bash
 catalogify inventory                        # repo facts + git churn, as JSON
 catalogify history pkg/foo --limit 5        # the reverts and hotfixes behind a path
-catalogify validate knowledge/              # OKF v0.1 §9 conformance
+catalogify cochange pkg/foo --depth 3       # what changes when this changes
+catalogify validate knowledge/              # OKF v0.1 §9 conformance (structure)
+catalogify verify knowledge/                # do its claims survive the repo?
 catalogify install [--list] [--uninstall]   # manage the agent skill
 ```
 
 - **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, plus per-file commit churn. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
 - **`history`** returns the creation commit, recent subjects, and the revert / hotfix / risk-flagged commits where invariants hide, each with the files it touched. A commit that changed only test files is marked `[TEST-ONLY]` so a "fix goroutine leak in foo_test.go" is never mistaken for a production invariant. Diff-free by default so historical secrets do not leak; `--patch` opts in.
-- **`validate`** enforces OKF §9: four error classes, nine warning classes.
+- **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. Two services can be coupled through a wire contract, a shared schema or a deployment ordering rule while sharing no import at all, and that relationship exists in no import graph, no call graph and no snapshot of the working tree. It shows up only in commits.
+- **`validate`** enforces OKF §9: four error classes, nine warning classes. This is a check on *structure*.
+- **`verify`** is a check on *truth*, and it is the one that matters. Every commit the bundle cites must exist and must touch that concept's own `source_files`; a commit that changed only test files cannot back a production invariant; every symbol in an `# Interfaces` table must appear in non-test code; a `# Gotchas` section that cites nothing is an unsupported claim. Run it in CI and an agent can no longer quietly write a confident sentence with nothing behind it.
 
-`okf-inventory`, `okf-history` and `okf-validate` remain as aliases from the
-package's previous life as `okf_skill`.
+Each is also installed under a bare `okf-` name (`okf-inventory`,
+`okf-history`, `okf-cochange`, `okf-validate`, `okf-verify`); the first two and
+`okf-validate` carry over from the package's previous life as `okf_skill`.
 
 ## Requirements
 

@@ -3,6 +3,13 @@
 Run the OKF conformance checker against the bundle and interpret the
 results for the user.
 
+`validate` answers *is this bundle well-formed?*. It says nothing about
+whether the bundle is **true**. Unless the user asked only for a
+conformance check, run `catalogify verify "$BUNDLE_DIR"` as well and report
+both: verify resolves each cited commit, each `# Interfaces` symbol and
+each dependency link against the repository, and its FINDINGs are claims
+the code does not support.
+
 Scope hints: if the user named a bundle path, validate that one.
 
 ## Steps
