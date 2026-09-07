@@ -86,7 +86,10 @@ under version control.
      flag the conflict as a new `open_questions` entry rather than silently
      rewriting it.
    - Use `catalogify history <path>` on the changed files to ground *why* they changed (revert/hotfix signals) so
-     refreshed sections keep the "why", not just the "what".
+     refreshed sections keep the "why", not just the "what". Skip commits
+     marked `[TEST-ONLY]` — they changed only test files and carry no
+     production invariant — and check each flagged commit's file list before
+     attributing it to this concept.
    - If a change introduces behavior you can't explain from the code or its
      history, add an `open_questions` entry to the concept rather than
      guessing (it will be picked up by the **clarify** workflow).
