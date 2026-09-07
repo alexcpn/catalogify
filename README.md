@@ -60,24 +60,28 @@ Everything above this line can be regenerated in six minutes. What you add here 
 
 ### Worked examples
 
-Two finished catalogs, published unedited, to browse before you run anything:
+Two finished catalogs, published unedited. Start at the architecture overview in either and
+click through.
 
-- **[Apache Airflow](https://github.com/agentic-ai-demos/airflow/tree/main/knowledge)** — a
-  13,954-file monorepo, **1.8 million lines** of Python, TypeScript, Go and JavaScript, with
-  88 provider packages and 40,823 commits of history.
-- **[Online Boutique](https://github.com/agentic-ai-demos/microservices-demo/tree/main/knowledge)** —
-  twelve services across Go, C#, Node, Python and Java.
+| | [**Apache Airflow**](https://github.com/agentic-ai-demos/airflow/tree/main/knowledge) | [**Online Boutique**](https://github.com/agentic-ai-demos/microservices-demo/tree/main/knowledge) |
+|---|---:|---:|
+| Lines of code | **1,805,835** | 8,103 |
+| Tracked files | 13,954 | 392 |
+| Commits of history | 40,823 | 2,690 |
+| Languages | Python, TypeScript, Go, JS | Go, C#, Node, Python, Java |
+| Reading the source would cost | ~17,900,000 tokens | ~70,000 tokens |
+| **The catalog it produced** | **17 concepts, ~9,700 tokens** | **20 concepts, ~11,600 tokens** |
+| Compression | **1,838 : 1** | 6 : 1 |
+| Fresh input to generate it | **101,559 tokens** | 117,850 tokens |
+| Wall clock | 6 min 29 s | 8 min 19 s |
 
-Start at the architecture overview in either and click through.
+Read the last four rows together. Airflow is **1.8 million lines of code** — 223 times the size
+of Online Boutique — and its catalog is *smaller*, took *fewer* uncached tokens, and finished
+*faster*.
 
-**What Airflow cost.** Reading that repository would be around 18 million tokens of source.
-Cataloguing it took **101,559 tokens of fresh input** and 6 minutes 29 seconds, and produced a
-17-concept catalog you can read whole for about 9,700 tokens. Over 91% of the run was served
-from cache, so the billed figure is lower again.
-
-Cost tracks the number of things worth naming, not the size of the tree. Airflow is thirty-five
-times the size of Online Boutique by file count and consumed *fewer* uncached tokens than it
-did.
+That is the whole property. Cost tracks the number of things worth naming, not the size of the
+tree, so the catalog stays inside one context window no matter how big the repository gets.
+Over 91% of each run was served from cache, so the billed figure is lower again.
 
 Already installed? Upgrading is [two steps](#upgrade), not one.
 
