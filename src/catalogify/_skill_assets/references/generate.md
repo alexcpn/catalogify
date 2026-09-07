@@ -57,7 +57,26 @@ subsystem, a granularity preference); otherwise cover the whole repo.
      inventing it, take `timestamp` from file modification time, and expect
      to raise more `open_questions`, because without history the "why" can
      only come from a human.
-5. Determine `resource_base`: from config, else from
+5. **Read `git.untracked_dirs` and treat it as off-limits.** These are
+   directories present in the working tree that git does not track and
+   `.gitignore` does not cover — a vendored dependency, an imported
+   third-party project, generated output. Everything else in the inventory
+   comes from `git ls-files`, so these paths are deliberately absent from
+   it.
+
+   **Never write a concept whose `source_files` point into one**, and do
+   not go looking through them with your own file tools. Code the
+   repository does not track is not this repository's to describe: there is
+   no history behind it, so every "why" you write about it is unsupported,
+   and `catalogify verify` will reject the concept (V8).
+
+   Name them in your report instead — "skipped `vendor/openafc/` (952
+   untracked files)" — and ask the user whether any of them should be
+   documented separately. If the answer is yes, the fix is to track the
+   subtree, or to catalog it as its own repository, not to fold it into
+   this bundle.
+
+6. Determine `resource_base`: from config, else from
    `git remote get-url origin` + default branch (convert SSH form to an
    `https://.../blob/<branch>/{path}` form). If the repo has no remote,
    omit `resource:` fields entirely rather than inventing URIs.
@@ -67,6 +86,9 @@ subsystem, a granularity preference); otherwise cover the whole repo.
 Read the inventory plus key files (READMEs, entry points, route
 definitions, schema files, docker/CI configs) and draft a **concept plan**:
 a table of `concept_id | type | title | one-line description | source files`.
+
+Every concept must describe **git-tracked** code. If a path is not in
+`git ls-files`, it does not get a concept (see Phase 0 step 5).
 
 Selection rules by granularity (default: medium):
 
@@ -141,7 +163,7 @@ timestamp: <ISO 8601 — the MOST RECENT commit time across this concept's sourc
             If a source file is untracked / has no git history, fall back to the current UTC time.>
 source_files:                     # extension field: repo-relative paths this concept derives from
   - path/to/file.py
-generated_by: catalogify/0.6.0   # producer extension (OKF §4.1)
+generated_by: catalogify/0.7.0   # producer extension (OKF §4.1)
 open_questions:                   # extension field: unresolved uncertainties (omit if none)
   - "Is the retry budget in submit_order() a hard SLA or a heuristic? Source is ambiguous."
 ```
@@ -419,6 +441,10 @@ control.
      wrote it from memory; grep for the real one.
    - **V5** — a `# Gotchas` section asserts invariants and cites nothing.
      Either cite the commit or delete the claim.
+   - **V8** — the concept describes files git does not track. Delete the
+     concept: it documents vendored or imported code that is not part of
+     this repository. Tell the user which subtree it came from rather than
+     silently dropping it.
 
    NOTEs are arguable and need judgement rather than obedience: **V6** often
    means a real runtime coupling, and **V7** means you described Go packages
@@ -439,8 +465,10 @@ control.
   concepts (§3.1).
 - Concept IDs are file paths minus `.md`; use lowercase, hyphenated
   filenames.
-- Every path in `source_files` must actually exist in the repo (the
-  validator flags dangling entries as W6). Give each concept a unique
+- Every path in `source_files` must be **tracked by git**, not merely
+  present on disk. `git ls-files -- <path>` must return something. The
+  validator flags paths that do not exist (W6); `catalogify verify` flags
+  paths git does not track (V8). Give each concept a unique
   `type` + `title` combination to avoid duplicate-concept warnings (W7).
 - Never fabricate facts about the code. If behavior is unclear from the
   source (and git history doesn't settle it), either mark it inline

@@ -12,7 +12,7 @@ description: >-
   "codebase knowledge base".
 license: MIT
 metadata:
-  version: "0.6.0"
+  version: "0.7.0"
   commands:
     - catalogify
 ---
@@ -53,10 +53,10 @@ resolve, run them from anywhere inside the repo. Each accepts `--help`.
 
 | Command | Purpose |
 | --- | --- |
-| `catalogify inventory [out.json] [--config <cfg>]` | Repo-wide inventory as JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas/migrations, CI/CD, docs, ADR/RFC docs, plus `git.history` (`churn` per-file commit counts = significance signal, `recent_commits`). Prints `Inventory written to <path>` — read the JSON from *that* path, it is per-run and not fixed. Each category carries a `truncated` flag. |
+| `catalogify inventory [out.json] [--config <cfg>]` | Repo-wide inventory as JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas/migrations, CI/CD, docs, ADR/RFC docs, plus `git.history` (`churn` per-file commit counts = significance signal, `recent_commits`) and `git.untracked_dirs` (subtrees on disk that git does not track — vendored or imported code, **never** give these concepts). Prints `Inventory written to <path>` — read the JSON from *that* path, it is per-run and not fixed. Each category carries a `truncated` flag. |
 | `catalogify history <path>… [--limit N] [--json] [--patch]` | Bounded per-concept git history: creation commit, commit count, recent subjects, and revert/hotfix/risk-flagged commits (deadlock, race, regression, security), each with the files it touched. Commits that changed only test files are marked `[TEST-ONLY]` and must not be cited as gotchas. This is where the **"why"** — invariants and gotchas — comes from. Diff-free by default; `--patch` opts into diffs and can surface secrets that were later removed. |
 | `catalogify cochange [<path>…] [--depth N] [--since D] [--json]` | Directories that change together in history, with `support`, `confidence` and `lift`. This is **logical coupling**: two units that always move in the same commit are related even when neither imports the other, because the mechanism is a wire contract, a shared schema or a deployment rule. No import graph or call graph can see it. Use it in planning to find units worth a concept, and to record couplings a reader would otherwise miss. |
-| `catalogify verify <bundle_dir> [--json] [--strict]` | Checks the bundle's **claims** against the repository, where `validate` only checks its **structure**. Every cited commit must exist, touch this concept's `source_files`, and not be test-only; every symbol in `# Interfaces` must exist in non-test code; every `# Gotchas` section must cite something. Run it after generate and after update, and fix every FINDING. |
+| `catalogify verify <bundle_dir> [--json] [--strict]` | Checks the bundle's **claims** against the repository, where `validate` only checks its **structure**. Every cited commit must exist, touch this concept's `source_files`, and not be test-only; every symbol in `# Interfaces` must exist in non-test code; every `# Gotchas` section must cite something; and every `source_files` path must be **tracked by git** (V8 — vendored or imported code in the working tree is not this repository's to document). Run it after generate and after update, and fix every FINDING. |
 | `catalogify validate <bundle_dir> [--config <cfg>] [--json]` | OKF §9 conformance checker. ERRORs: unparseable frontmatter, missing/empty `type`, malformed `index.md`/`log.md`, `log.md` block missing its `Commit:` line. WARNINGs: W1 missing title/description, W2 broken links, W3 missing index, W4 empty body, W5 possible secret, W6 dangling `source_files`, W7 duplicate concept, W8 unresolved `open_questions`. |
 
 `catalogify inventory` and `catalogify history` need `bash`, and use `git`

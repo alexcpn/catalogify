@@ -168,6 +168,31 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
   COMMITS_SCANNED="$(git rev-list --no-merges --count -n "$HIST_COMMITS" HEAD 2>/dev/null || echo 0)"
 fi
 
+# --- untracked subtrees ----------------------------------------------------
+# Directories sitting in the working tree that git does not track and
+# .gitignore does not cover: vendored dependencies, an imported third-party
+# project, generated output. Everything else in this inventory comes from
+# `git ls-files`, so these are invisible to it by design — but an agent with
+# its own file tools will find them anyway, and has been known to document
+# them as if they were part of the repository. They are not: there is no
+# history behind them, so nothing written about them can cite anything.
+# Reported here so the agent can name them and say why it skipped them.
+UNTRACKED_MIN="${OKF_UNTRACKED_MIN:-10}"   # ignore dirs smaller than this
+UNTRACKED_TOP="${OKF_UNTRACKED_TOP:-15}"   # report at most this many
+UNTRACKED_DIRS=""
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  UNTRACKED_DIRS="$( { git ls-files --others --exclude-standard --directory 2>/dev/null || true; } \
+    | grep -E '/$' \
+    | grep -vE '(^|/)(\.[^/]+|__pycache__|node_modules|venv|env|build|dist|target|vendor|coverage|htmlcov)/' \
+    | apply_excludes \
+    | while IFS= read -r d; do
+        [[ -z "$d" ]] && continue
+        n="$(find "$d" -type f 2>/dev/null | wc -l | tr -d ' ')"
+        if [[ "${n:-0}" -ge "$UNTRACKED_MIN" ]]; then printf '%s\t%s\n' "$n" "$d"; fi
+      done \
+    | sort -rn | take "$UNTRACKED_TOP" || true)"
+fi
+
 ALL_FILES="$(list_matching '.')"
 FILE_COUNT="$(printf '%s\n' "$ALL_FILES" | sed '/^$/d' | wc -l | tr -d ' ')"
 
@@ -251,6 +276,17 @@ def churn_list(raw):
                 pass
     return out
 
+def untracked_list(raw):
+    out = []
+    for ln in lines(raw):
+        parts = ln.split("\t", 1)
+        if len(parts) == 2:
+            try:
+                out.append({"dir": parts[1].strip(), "files": int(parts[0].strip())})
+            except ValueError:
+                pass
+    return out
+
 def recent_list(raw):
     out = []
     for ln in lines(raw):
@@ -274,6 +310,10 @@ inv = {
       "recent_commits": recent_list("""$RECENT_COMMITS"""),
       "churn_truncated": len(churn) >= int("$CHURN_TOP" or 0) > 0,
     },
+    # Present on disk, not in the index, not gitignored. NOT part of this
+    # repository: no history, nothing citable. Do not write concepts for
+    # these — name them and say they were skipped.
+    "untracked_dirs": untracked_list("""$UNTRACKED_DIRS"""),
   },
   "file_count": int("$FILE_COUNT" or 0),
   "cap": cap,
@@ -293,6 +333,12 @@ else:
 hist = inv["git"]["history"]
 print(f"  git history: {hist['commits_scanned']} commits scanned, "
       f"{len(hist['churn'])} hot files, {len(hist['recent_commits'])} recent subjects")
+untracked = inv["git"]["untracked_dirs"]
+if untracked:
+    biggest = untracked[0]
+    print(f"  untracked subtrees: {len(untracked)} "
+          f"(largest: {biggest['dir']} with {biggest['files']} files) "
+          f"- NOT part of the repo, do not write concepts for them")
 for k in ("dependency_manifests","entrypoints","api_definitions","route_like_files",
           "data_layer_files","ops_files","docs","config_files","adr_docs"):
     flag = " (truncated)" if k in inv["truncated"] else ""

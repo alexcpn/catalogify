@@ -17,11 +17,20 @@ Findings (a claim is unsupported):
   V4  A symbol in the `# Interfaces` table does not appear in any
       non-test file under `source_files`.
   V5  A `# Gotchas` section states invariants but cites no commit at all.
+  V8  A `source_files` entry is not tracked by git. Vendored, imported or
+      generated code sitting in the working tree is not part of this
+      repository: it has no history to mine, it is not yours to document,
+      and describing it produces confident prose backed by nothing. When
+      *no* entry is tracked, the concept is reported once and its other
+      checks are skipped, because git cannot see those files to check them.
 
 Notes (probably wrong, legitimately arguable):
-  V6  A `# Dependencies` link to another concept that no import backs.
-      Runtime coupling (queues, RPC, shared storage) is a real reason for
-      this, so it is reported rather than failed.
+  V6  A `# Dependencies` link to another concept that no import backs, in
+      either direction. Import lines are matched against several forms of
+      the target path — as written, without its extension, and dotted — so
+      `import libs.lib_util` backs a link to `libs/lib_util.py`. Runtime
+      coupling (queues, RPC, shared storage) is a real reason for an
+      unbacked link, so it is reported rather than failed.
   V7  The body claims an "import cycle" between Go packages. Go forbids
       them; what is almost always meant is a shared leaf sub-package.
 
@@ -60,8 +69,35 @@ TEST_FILE = re.compile(
     r"|_spec\.rb$"
 )
 
+# Import-looking lines: a keyword form, or Go's bare quoted path inside a
+# grouped `import ( ... )` block.
+IMPORT_LINE = (
+    r'^[[:space:]]*(import|from|#include|require|use|using)[[:space:]]'
+    r'|^[[:space:]]*(_[[:space:]]+|[A-Za-z_][A-Za-z0-9_]*[[:space:]]+)?"[^"]{3,}"[[:space:]]*$'
+)
+
 findings = []
 notes = []
+
+
+def import_needles(path):
+    """Forms of a path that could appear in an import statement.
+
+    Go writes the directory path ("…/pkg/kubelet/cm"), Python writes a
+    dotted module (`import libs.lib_util`), JS writes a relative path with
+    no extension. Matching only the literal filesystem path finds the first
+    and misses every other language.
+    """
+    p = path.rstrip("/")
+    stem = re.sub(r"\.[A-Za-z0-9]{1,5}$", "", p)
+    parts = [x for x in stem.split("/") if x]
+    forms = {p, stem, stem.replace("/", ".")}
+    if len(parts) >= 2:
+        forms.add("/".join(parts[-2:]))
+        forms.add(".".join(parts[-2:]))
+    if parts:
+        forms.add(parts[-1])
+    return {f for f in forms if len(f) >= 3}
 
 
 # --- repo access -----------------------------------------------------------
@@ -73,6 +109,8 @@ class Repo:
         self.root = root
         self._files = {}      # sha -> [paths] | None when the sha is unknown
         self._grep = {}       # (needle, word, paths) -> [paths]
+        self._tracked = {}    # path -> bool
+        self._imports = {}    # (paths) -> import-looking lines
 
     def _git(self, args):
         try:
@@ -107,6 +145,28 @@ class Repo:
             # git grep exits 1 for "no match", which is not an error here.
             self._grep[key] = [ln for ln in out.splitlines() if ln.strip()] if code in (0, 1) else []
         return self._grep[key]
+
+    def tracked(self, path):
+        """True when git has this path, or anything under it, in the index."""
+        if path not in self._tracked:
+            code, out = self._git(["ls-files", "--", path])
+            self._tracked[path] = code == 0 and bool(out.strip())
+        return self._tracked[path]
+
+    def import_lines(self, paths):
+        """Every import-looking line under `paths`, as one blob of text.
+
+        Covers keyword imports (Python, JS/TS, Rust, C/C++, Java, C#) and
+        Go's grouped form, where lines inside `import ( ... )` are bare
+        quoted paths with no keyword at all.
+        """
+        key = tuple(paths)
+        if key not in self._imports:
+            code, out = self._git(
+                ["grep", "--no-color", "-h", "-E", "-e", IMPORT_LINE, "--", *paths]
+            )
+            self._imports[key] = out if code in (0, 1) else ""
+        return self._imports[key]
 
     def has_go(self, paths):
         code, out = self._git(["ls-files", "--", *[f"{p}/*.go" if not p.endswith(".go") else p for p in paths]])
@@ -235,7 +295,25 @@ def verify_concept(rel, text, bundle, repo_root, repo, concept_sources):
     if not isinstance(data, dict):
         return  # validate_okf.py owns malformed frontmatter (E1)
 
-    paths = source_paths(data, repo_root)
+    all_paths = source_paths(data, repo_root)
+    paths = [p for p in all_paths if repo.tracked(p)]
+    untracked = [p for p in all_paths if p not in paths]
+
+    # --- V8: code git does not know about is not this repository's to describe.
+    if all_paths and not paths:
+        shown = ", ".join(untracked[:3]) + ("…" if len(untracked) > 3 else "")
+        findings.append(
+            f"V8 {rel}: no source_files entry is tracked by git ({shown}) — vendored, "
+            f"generated or imported code, not part of this repository. Remaining checks "
+            f"skipped: git cannot see these files, so nothing here can be verified"
+        )
+        return
+    for u in untracked:
+        findings.append(
+            f"V8 {rel}: source_files entry '{u}' is not tracked by git — vendored, "
+            f"generated or imported code; it is excluded from every check below"
+        )
+
     secs = sections(body)
     gotchas = next((v for k, v in secs.items() if k.startswith("gotcha")), "")
 
@@ -282,36 +360,33 @@ def verify_concept(rel, text, bundle, repo_root, repo, concept_sources):
                 checked.add(sym)
                 hits = [h for h in repo.grep_files(sym, paths) if not TEST_FILE.search(h)]
                 if not hits:
+                    scope = " (git-tracked entries only)" if untracked else ""
                     findings.append(
-                        f"V4 {rel}: `{sym}` in # Interfaces appears in no non-test file under source_files"
+                        f"V4 {rel}: `{sym}` in # Interfaces appears in no non-test file "
+                        f"under source_files{scope}"
                     )
 
     # --- V6: a dependency link no import backs.
     deps = next((v for k, v in secs.items() if k.startswith("dependenc")), "")
     if deps and paths:
+        my_imports = repo.import_lines(paths)
         for target in LINK.findall(deps):
             if not target.startswith("/") or not target.endswith(".md"):
                 continue
             tgt_rel = os.path.normpath(target.lstrip("/"))
-            tgt_paths = concept_sources.get(tgt_rel)
+            tgt_paths = [t for t in (concept_sources.get(tgt_rel) or []) if repo.tracked(t)]
             if not tgt_paths:
-                continue  # unwritten concept, or one with no source_files
-            backed = False
-            for tp in tgt_paths:
-                # forward: this concept imports the target
-                if any(not TEST_FILE.search(h) for h in repo.grep_files(tp.rstrip("/"), paths, word=False)):
-                    backed = True
-                    break
+                continue  # unwritten concept, no source_files, or untracked (V8 covers it)
+            # forward: this concept imports the target
+            backed = any(n in my_imports for t in tgt_paths for n in import_needles(t))
             if not backed:
-                for sp in paths:
-                    # reverse: the target imports this concept ("consumed by", "read by")
-                    if any(not TEST_FILE.search(h) for h in repo.grep_files(sp.rstrip("/"), tgt_paths, word=False)):
-                        backed = True
-                        break
+                # reverse: the target imports this one ("consumed by", "read by")
+                their_imports = repo.import_lines(tgt_paths)
+                backed = any(n in their_imports for sp in paths for n in import_needles(sp))
             if not backed:
                 notes.append(
-                    f"V6 {rel}: links to {target} under # Dependencies but no import mentions "
-                    f"{tgt_paths[0]} — runtime coupling, or invented?"
+                    f"V6 {rel}: links to {target} under # Dependencies but no import in "
+                    f"either direction mentions {tgt_paths[0]} — runtime coupling, or invented?"
                 )
 
     # --- V7: Go has no import cycles.
