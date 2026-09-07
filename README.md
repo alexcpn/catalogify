@@ -83,6 +83,9 @@ That is the whole property. Cost tracks the number of things worth naming, not t
 tree, so the catalog stays inside one context window no matter how big the repository gets.
 Over 91% of each run was served from cache, so the billed figure is lower again.
 
+Every run behind those figures — including the ones that went wrong — is recorded in
+[EXPERIMENTS.md](EXPERIMENTS.md), with what it cost and what the checker found.
+
 Already installed? Upgrading is [two steps](#upgrade), not one.
 
 ## Why it exists
