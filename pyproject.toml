@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "catalogify"
-version = "0.5.0"
+version = "0.6.0"
 description = "Turn a repository into a knowledge catalog an AI agent can afford to read: Open Knowledge Format concepts mined from code and git history."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -33,6 +33,8 @@ catalogify = "catalogify.cli:main"
 okf-inventory = "catalogify.runner:main_inventory"
 okf-history = "catalogify.runner:main_history"
 okf-validate = "catalogify.runner:main_validate"
+okf-verify = "catalogify.runner:main_verify"
+okf-cochange = "catalogify.runner:main_cochange"
 
 [tool.setuptools.packages.find]
 where = ["src"]

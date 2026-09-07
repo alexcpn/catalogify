@@ -61,6 +61,16 @@ def history(argv: list = None) -> int:
     return _run_script("okf-history.sh", list(sys.argv[1:] if argv is None else argv), [_find_bash()])
 
 
+def cochange(argv: list = None) -> int:
+    """`okf-cochange` — directories that change together, mined from history."""
+    return _run_script("okf-cochange.py", list(sys.argv[1:] if argv is None else argv), [sys.executable])
+
+
+def verify(argv: list = None) -> int:
+    """`okf-verify` — check a bundle's claims against the repository."""
+    return _run_script("verify_okf.py", list(sys.argv[1:] if argv is None else argv), [sys.executable])
+
+
 def validate(argv: list = None) -> int:
     """`okf-validate` — OKF v0.1 §9 conformance checker for a bundle directory."""
     return _run_script("validate_okf.py", list(sys.argv[1:] if argv is None else argv), [sys.executable])
@@ -76,3 +86,11 @@ def main_history() -> int:
 
 def main_validate() -> int:
     return validate()
+
+
+def main_cochange() -> int:
+    return cochange()
+
+
+def main_verify() -> int:
+    return verify()
