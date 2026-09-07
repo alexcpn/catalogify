@@ -163,7 +163,7 @@ timestamp: <ISO 8601 — the MOST RECENT commit time across this concept's sourc
             If a source file is untracked / has no git history, fall back to the current UTC time.>
 source_files:                     # extension field: repo-relative paths this concept derives from
   - path/to/file.py
-generated_by: catalogify/0.8.0   # producer extension (OKF §4.1)
+generated_by: catalogify/0.9.0   # producer extension (OKF §4.1)
 open_questions:                   # extension field: unresolved uncertainties (omit if none)
   - "Is the retry budget in submit_order() a hard SLA or a heuristic? Source is ambiguous."
 ```
@@ -409,6 +409,28 @@ unambiguous.
 
   * [data/](data/) - Database tables and event schemas.
   ```
+
+### `README.md` — the bundle's front door
+
+Write one at the bundle root. OKF navigates by `index.md`, but GitHub, GitLab
+and most forges render `README.md` when someone opens a directory and ignore
+`index.md` completely, so without it a reader who clicks into `knowledge/`
+sees a bare file list. The validator ignores `README.md` rather than treating
+it as a concept, so it needs no frontmatter.
+
+Keep it short and aimed at a human arriving cold:
+
+- one line on what the directory is and that it is generated;
+- a link straight to `architecture/overview.md`, and one to `index.md`;
+- concept count, generator version, and the commit it was built from;
+- how to check it: `catalogify verify` resolves every cited commit, symbol
+  and dependency link;
+- **how to correct it.** Say that unresolved uncertainty is parked in
+  `open_questions`, that `catalogify clarify` walks a human through those
+  questions, and that an answer given there is marked with a sentinel and
+  survives every later regeneration. This is the highest-value thing a
+  reader can do with the bundle, and the only part of it a machine cannot
+  produce — say so plainly rather than burying it.
 
 ### Log file (OKF §7)
 

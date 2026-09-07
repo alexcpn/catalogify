@@ -30,6 +30,10 @@ WARNINGS (consumers must tolerate; reported for quality):
   W7  Possible duplicate concept: another file shares the same
       `type` + `title`.
   W8  Concept has unresolved `open_questions` (run the clarify workflow).
+  Note: `README.md` anywhere in the bundle is ignored, not treated as a
+  concept. OKF navigates by `index.md`, but forges render `README.md` when a
+  directory is opened, so a bundle needs one to have a front door.
+
   W9  Bundle-relative links (`](/path.md)`) in a bundle that is NOT at the
       repository root. OKF §6.1 resolves a leading `/` against the bundle
       root and recommends the form, but GitHub — and every other
@@ -62,6 +66,12 @@ except ImportError:
     HAVE_YAML = False
 
 RESERVED = {"index.md", "log.md"}
+# README.md is not an OKF concept and is not checked as one. OKF's navigation
+# file is index.md, but GitHub, GitLab and most forges render README.md when
+# you open a directory and ignore index.md entirely — so a bundle without one
+# presents a bare file list to the humans it was written for. Treated as a
+# non-concept so a bundle can have a front door and stay conformant.
+IGNORED = {"README.md"}
 DATE_HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
 # A commit SHA, or the literal `none` for bundles generated outside a git
 # repository, where there is no commit to record.
@@ -330,7 +340,7 @@ def main() -> int:
         rel_dir = os.path.relpath(dirpath, bundle)
         mds = [
             f for f in filenames
-            if f.endswith(".md") and not is_excluded(
+            if f.endswith(".md") and f not in IGNORED and not is_excluded(
                 os.path.relpath(os.path.join(dirpath, f), bundle), exclude_patterns
             )
         ]
@@ -339,6 +349,8 @@ def main() -> int:
         for f in mds:
             path = os.path.join(dirpath, f)
             rel = os.path.relpath(path, bundle)
+            if f in IGNORED:
+                continue
             if f == "index.md":
                 check_index(path, rel, dirpath == bundle, bundle)
             elif f == "log.md":

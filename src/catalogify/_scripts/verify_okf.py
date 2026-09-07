@@ -55,6 +55,9 @@ except ImportError:
     HAVE_YAML = False
 
 RESERVED = {"index.md", "log.md"}
+# Not a concept: a bundle's human front door, since forges render README.md
+# when a directory is opened and ignore index.md. Matches validate_okf.py.
+IGNORED = {"README.md"}
 # Backtick-quoted hex token: how generate.md tells the agent to cite a commit.
 SHA_TOKEN = re.compile(r"`([0-9a-f]{7,40})`")
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
@@ -441,7 +444,7 @@ def main():
     for dirpath, dirnames, filenames in os.walk(bundle):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for f in filenames:
-            if not f.endswith(".md") or f in RESERVED:
+            if not f.endswith(".md") or f in RESERVED or f in IGNORED:
                 continue
             path = os.path.join(dirpath, f)
             rel = os.path.relpath(path, bundle)
