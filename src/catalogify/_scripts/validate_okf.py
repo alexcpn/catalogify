@@ -30,6 +30,14 @@ WARNINGS (consumers must tolerate; reported for quality):
   W7  Possible duplicate concept: another file shares the same
       `type` + `title`.
   W8  Concept has unresolved `open_questions` (run the clarify workflow).
+  W9  Bundle-relative links (`](/path.md)`) in a bundle that is NOT at the
+      repository root. OKF §6.1 resolves a leading `/` against the bundle
+      root and recommends the form, but GitHub — and every other
+      repo-relative renderer — resolves it against the *repository* root,
+      so each such link 404s in a browser while validating perfectly here.
+      Use relative paths (`](../services/foo.md)`), which §6.1 also
+      permits. Not reported when the bundle IS the repository root, where
+      the two roots coincide and the links resolve correctly.
 
 Usage: validate_okf.py <bundle_dir> [--config PATH] [--exclude GLOB]...
                         [--repo-root PATH] [--json]
@@ -72,6 +80,9 @@ SECRET_PATTERNS = [
 
 errors: list[str] = []
 warnings: list[str] = []
+# True when the bundle lives in a subdirectory of the repo, which is when
+# bundle-relative links diverge from what a repo-relative renderer does.
+NESTED_BUNDLE = False
 concept_meta: list[tuple[str, str, str]] = []  # (rel, type, title)
 
 
@@ -138,7 +149,7 @@ def check_concept(path: str, rel: str, bundle: str, repo_root: str):
             warnings.append(f"W1 {rel}: missing recommended field `{field}`")
     if not body.strip():
         warnings.append(f"W4 {rel}: concept body is empty")
-    check_links(body, rel, os.path.dirname(path), bundle)
+    check_links(body, rel, os.path.dirname(path), bundle, NESTED_BUNDLE)
     check_source_files(data, rel, repo_root)
     check_open_questions(data, rel)
     if isinstance(t, str) and t.strip() and data.get("title"):
@@ -174,18 +185,28 @@ def check_open_questions(data: dict, rel: str):
         )
 
 
-def check_links(body: str, rel: str, filedir: str, bundle: str):
+def check_links(body: str, rel: str, filedir: str, bundle: str, nested_bundle: bool = False):
+    rooted = []
     for target in LINK.findall(body):
         target = target.split("#")[0].strip()
         if not target or "://" in target or target.startswith("mailto:"):
             continue
         if target.startswith("/"):
             dest = os.path.join(bundle, target.lstrip("/"))
+            rooted.append(target)
         else:
             dest = os.path.join(filedir, target)
         # Directory links (progressive disclosure) are fine if the dir exists.
         if not (os.path.exists(dest) or os.path.exists(dest.rstrip("/"))):
             warnings.append(f"W2 {rel}: broken link -> {target}")
+    # W9: these resolve here and 404 on GitHub. See the module docstring.
+    if nested_bundle and rooted:
+        warnings.append(
+            f"W9 {rel}: {len(rooted)} bundle-relative link"
+            f"{'s' if len(rooted) != 1 else ''} (e.g. `{rooted[0]}`) will not resolve "
+            f"on GitHub — the bundle is not the repository root, so a leading `/` "
+            f"points at the repo root. Use a relative path instead."
+        )
 
 
 def check_index(path: str, rel: str, is_root: bool, bundle: str):
@@ -202,7 +223,7 @@ def check_index(path: str, rel: str, is_root: bool, bundle: str):
             extra = set(data) - {"okf_version"}
             if extra:
                 errors.append(f"E3 {rel}: root index.md frontmatter may only declare okf_version (found: {sorted(extra)})")
-    check_links(body if fm is not None else text, rel, os.path.dirname(path), bundle)
+    check_links(body if fm is not None else text, rel, os.path.dirname(path), bundle, NESTED_BUNDLE)
 
 
 def check_log(path: str, rel: str, require_commit: bool = True):
@@ -296,6 +317,8 @@ def main() -> int:
     # Bundles generated outside a git repository have no commit to record in
     # log.md, so E4 cannot apply to them.
     is_git_repo = os.path.isdir(os.path.join(repo_root, ".git"))
+    global NESTED_BUNDLE
+    NESTED_BUNDLE = os.path.normpath(bundle) != os.path.normpath(repo_root)
     exclude_patterns = load_config_excludes(args.config) + list(args.exclude)
 
     if not HAVE_YAML:

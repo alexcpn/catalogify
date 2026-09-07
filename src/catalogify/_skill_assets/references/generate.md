@@ -163,7 +163,7 @@ timestamp: <ISO 8601 — the MOST RECENT commit time across this concept's sourc
             If a source file is untracked / has no git history, fall back to the current UTC time.>
 source_files:                     # extension field: repo-relative paths this concept derives from
   - path/to/file.py
-generated_by: catalogify/0.7.0   # producer extension (OKF §4.1)
+generated_by: catalogify/0.8.0   # producer extension (OKF §4.1)
 open_questions:                   # extension field: unresolved uncertainties (omit if none)
   - "Is the retry budget in submit_order() a hard SLA or a heuristic? Source is ambiguous."
 ```
@@ -241,7 +241,8 @@ say so in one line rather than omitting the heading.
 **3. `# Dependencies` — derived from imports.** Do not guess the graph;
 read it. Extract the concept's internal imports, then map each imported
 path to the concept whose `source_files` contains it, and emit a
-bundle-relative link:
+relative link (see **Cross-linking** below for why relative and not
+bundle-relative):
 
 ```bash
 # Go
@@ -262,7 +263,7 @@ for any partner with high `lift` that the import list does not already
 explain, add a line saying so and give the number:
 
 ```markdown
-Changes together with [scheduler](/services/scheduler.md) in 31% of its
+Changes together with [scheduler](../services/scheduler.md) in 31% of its
 commits (lift 6.2) despite sharing no import — they agree on the pod
 condition contract, so a change to one usually needs a change to the other.
 ```
@@ -281,11 +282,32 @@ start.
 
 ### Cross-linking
 
-- Link with bundle-relative paths beginning with `/` (OKF §5.1), e.g.
-  `[orders model](/data/orders.md)`. Express the relationship in the
-  surrounding prose. Links to concepts you have not written yet are
-  allowed — broken links legitimately represent not-yet-written
-  knowledge (§5.3).
+**Use relative paths, not bundle-relative ones.** From
+`architecture/overview.md`, link the payment service as
+`[Payment Service](../services/paymentservice.md)`.
+
+OKF §6.1 permits both forms and recommends the bundle-relative one
+(`](/services/paymentservice.md)`), because a leading `/` is stable if a
+document later moves within its subdirectory. Decline that recommendation
+here, for one decisive reason: a leading `/` is resolved against the
+**bundle** root by OKF and against the **repository** root by GitHub and
+every other repo-relative renderer. Whenever the bundle sits in a
+subdirectory — which is the normal case, `knowledge/` — every such link
+404s in a browser while validating perfectly against the spec. A catalog
+whose cross-links are dead for the humans reviewing it has lost most of
+the reason for being markdown in git.
+
+Relative paths resolve identically for the validator, for an agent reading
+files, and for a reader clicking through the rendered bundle. The
+validator reports the bundle-relative form as **W9** when the bundle is
+not the repository root.
+
+If the bundle *is* the repository root, the two roots coincide and either
+form works; prefer bundle-relative there, as the spec recommends.
+
+- Express the relationship in the surrounding prose, not just the link.
+- Links to concepts you have not written yet are allowed — a broken link
+  legitimately represents not-yet-written knowledge (§6.3).
 - Aim for every code concept to link to at least one other concept. An
   orphan concept usually means the `# Dependencies` step was skipped.
 

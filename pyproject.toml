@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "catalogify"
-version = "0.7.0"
+version = "0.8.0"
 description = "Turn a repository into a knowledge catalog an AI agent can afford to read: Open Knowledge Format concepts mined from code and git history."
 readme = "README.md"
 requires-python = ">=3.9"

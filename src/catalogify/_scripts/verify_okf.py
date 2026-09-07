@@ -371,9 +371,16 @@ def verify_concept(rel, text, bundle, repo_root, repo, concept_sources):
     if deps and paths:
         my_imports = repo.import_lines(paths)
         for target in LINK.findall(deps):
-            if not target.startswith("/") or not target.endswith(".md"):
+            target = target.split("#")[0].strip()
+            if not target or "://" in target or not target.endswith(".md"):
                 continue
-            tgt_rel = os.path.normpath(target.lstrip("/"))
+            if target.startswith("/"):
+                # OKF bundle-relative: resolve against the bundle root.
+                tgt_rel = os.path.normpath(target.lstrip("/"))
+            else:
+                # Relative: resolve against this concept's own directory,
+                # then express it bundle-relative to match concept_sources.
+                tgt_rel = os.path.normpath(os.path.join(os.path.dirname(rel), target))
             tgt_paths = [t for t in (concept_sources.get(tgt_rel) or []) if repo.tracked(t)]
             if not tgt_paths:
                 continue  # unwritten concept, no source_files, or untracked (V8 covers it)
