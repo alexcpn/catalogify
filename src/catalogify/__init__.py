@@ -8,4 +8,4 @@ and parks what it cannot establish as an open question rather than inventing it.
 OKF spec: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
