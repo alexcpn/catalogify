@@ -111,8 +111,8 @@ under version control.
      ```markdown
      ## <YYYY-MM-DD>
      Commit: `<new-head-sha>`
-     * **Update**: Refreshed [Checkout Service](/services/checkout.md) for payment-provider change (commit `<sha>`).
-     * **Creation**: Added [Refunds API](/apis/refunds.md).
+     * **Update**: Refreshed [Checkout Service](services/checkout.md) for payment-provider change (commit `<sha>`).
+     * **Creation**: Added [Refunds API](apis/refunds.md).
      ```
 
 8. **Validate and report.** Run

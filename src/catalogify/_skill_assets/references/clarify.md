@@ -73,7 +73,7 @@ question in the bundle.
      ```markdown
      ## <YYYY-MM-DD>
      Commit: `<head-sha>`
-     * **Clarification**: Resolved 4 open questions across [Checkout Service](/services/checkout.md) and [Orders](/data/orders.md); 2 left unresolved.
+     * **Clarification**: Resolved 4 open questions across [Checkout Service](services/checkout.md) and [Orders](data/orders.md); 2 left unresolved.
      ```
 
    - `index.md` files rarely change here (descriptions may, if an answer
