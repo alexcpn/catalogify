@@ -20,7 +20,9 @@ Commands:
   history <path>... [--limit N] [--json]   Per-path git history: creation commit,
                                            recent subjects, and the revert /
                                            hotfix / risk-flagged commits where
-                                           invariants hide. Add --patch for diffs
+                                           invariants hide, with the files each
+                                           touched; test-only commits are marked
+                                           [TEST-ONLY]. Add --patch for diffs
                                            (careful: can surface old secrets).
   validate <bundle_dir> [--config <cfg>]   Check a bundle against OKF v0.1 §9.
   install [--agents L] [--scope S]         Install the skill into your agents.

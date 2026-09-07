@@ -248,6 +248,14 @@ valuably — **revert/hotfix/risk-flagged commits** (reverts, hotfixes,
 regressions, races, deadlocks, leaks, corruption, security fixes). Those
 are your gotchas and invariants.
 
+Each flagged commit is listed with the files it touched, and a commit that
+changed **only test files** is marked `[TEST-ONLY]` (`"test_only": true`
+in `--json`). **Never cite a `[TEST-ONLY]` commit as a gotcha.** "Fix
+goroutine leak in foo_test.go" is test hygiene, not evidence that
+production code leaks goroutines. Use the file list the same way for
+partial matches: a "race" fix whose only production file is in another
+package belongs to that package's concept, not this one.
+
 **Do not stop at the subject line.** A subject tells you something went
 wrong; it rarely tells you the rule. For the two or three highest-signal
 commits per concept, read the actual commit:

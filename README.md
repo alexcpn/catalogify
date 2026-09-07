@@ -186,7 +186,7 @@ catalogify install [--list] [--uninstall]   # manage the agent skill
 ```
 
 - **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, plus per-file commit churn. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
-- **`history`** returns the creation commit, recent subjects, and the revert / hotfix / risk-flagged commits where invariants hide. Diff-free by default so historical secrets do not leak; `--patch` opts in.
+- **`history`** returns the creation commit, recent subjects, and the revert / hotfix / risk-flagged commits where invariants hide, each with the files it touched. A commit that changed only test files is marked `[TEST-ONLY]` so a "fix goroutine leak in foo_test.go" is never mistaken for a production invariant. Diff-free by default so historical secrets do not leak; `--patch` opts in.
 - **`validate`** enforces OKF §9: four error classes, nine warning classes.
 
 `okf-inventory`, `okf-history` and `okf-validate` remain as aliases from the
