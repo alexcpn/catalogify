@@ -122,6 +122,37 @@ At 676 tokens per service, a 90-service catalog is roughly **61,000 tokens**
 and fits in one call alongside the specification. See [Benchmark](#benchmark)
 to reproduce these numbers.
 
+## How this relates to what else exists
+
+The brownfield problem is well recognised, and several tools address parts of
+it. They are worth naming, because they solve a different half.
+
+**[Brownfield Bootstrap](https://speckit-community.github.io/extensions/brownfield)
+and [BrownKit](https://github.com/github/spec-kit/issues/2510)** scan an
+existing project and configure the harness to match it: a constitution derived
+from your actual conventions, spec and plan templates matched to the detected
+stack, module boundaries, capability and risk discovery. Both work by static
+analysis of the working tree. **Neither reads your git history**, which is where
+the invariants live — the reverts, the hotfixes, the rule somebody learned at
+2am and never wrote down. catalogify starts there.
+
+**Repomix and similar context loaders** put the codebase in front of the model
+before work begins. That is the right instinct and it is bounded by arithmetic:
+Airflow's source is roughly 17.9 million tokens. Its catalog is 9,700.
+
+**Code graphs** (Graphify, tree-sitter indexers) answer *reaching* — what breaks
+if I change this function — and answer it better than prose ever will. See
+above: the two compose.
+
+**Agentic search**, as Claude Code does it, has largely replaced precomputed
+indexes for the reaching problem. That is one reason catalogify does not build
+one. It operates a layer above, on the question you have to answer before
+searching is worth anything: which parts of this system does this change touch?
+
+What is left uncovered by all of the above is a durable, cheap description of
+the estate, grounded in history and checkable against the code. That is the
+only thing this tool tries to be.
+
 ## What it runs on
 
 **Monorepos and single repos alike.** Concepts are scoped by folder, so a
