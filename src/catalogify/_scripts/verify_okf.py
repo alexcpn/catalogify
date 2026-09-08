@@ -256,23 +256,73 @@ def table_first_column(text):
     return cells
 
 
+# Extensions that make a dotted token a filename, not a Type.method chain.
+FILE_EXT = {
+    "yaml", "yml", "json", "toml", "ini", "cfg", "conf", "xml", "csv", "lock",
+    "md", "rst", "txt", "html", "css", "scss", "svg", "png", "jpg", "gif",
+    "go", "py", "js", "jsx", "ts", "tsx", "java", "cs", "rb", "rs", "kt", "php",
+    "sh", "bash", "sql", "proto", "tf", "gradle", "properties", "env", "cast",
+}
+HTTP_VERBS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT"}
+# Words that appear in a first column as a category or a type, not as a symbol
+# anyone could grep for. Skipping a real one costs a missed check; accepting a
+# false one costs trust, which is worth more.
+NON_SYMBOLS = {
+    "class", "func", "function", "def", "type", "struct", "interface", "enum",
+    "const", "var", "let", "public", "private", "protected", "static", "void",
+    "string", "int", "bool", "float", "double", "byte", "char", "error", "any",
+    "null", "nil", "none", "true", "false", "import", "package", "module",
+    "return", "new", "this", "self", "super", "async", "await", "yield",
+    "symbol", "method", "field", "contract", "surface", "endpoint", "route",
+    "name", "path", "purpose", "value", "key", "file", "manifest", "command",
+}
+
+
 def symbols_in(cell):
-    """Identifiers a cell claims exist. Endpoints and prose are skipped."""
-    spans = re.findall(r"`([^`]+)`", cell) or [cell]
+    """Identifiers a cell unambiguously claims exist.
+
+    Deliberately conservative: this feeds V4, and a false positive there
+    accuses an author of inventing an API they did not invent. A check that
+    fires rarely and is right is worth more than one that fires often and is
+    half noise, because noise teaches people to ignore the tool.
+
+    So a span is judged only when it is plainly a single identifier. Anything
+    ambiguous is skipped rather than guessed at: HTTP routes (`GET /cart`),
+    filenames (`frontend.yaml`), generics (`Map<String, Foo>`), CLI flags,
+    prose, and bare type names that are really column headings.
+    """
+    spans = re.findall(r"`([^`]+)`", cell)
+    if not spans:
+        return []  # no code span at all: prose, or a category label
     out = []
     for span in spans:
         span = span.strip()
-        if not span or span.startswith(("/", "-")):
-            continue  # HTTP route or a dash placeholder, not a symbol
-        span = span.split("(")[0].strip()          # drop call args
-        span = re.sub(r"^\([^)]*\)\s*", "", span)  # drop a Go receiver
-        for part in re.split(r"[/,]", span):
-            part = part.strip().rstrip("*.").strip()
+        if not span:
+            continue
+        span = re.sub(r"^\([^)]*\)\s*", "", span)   # Go receiver: (m *T) Sync -> Sync
+        span = span.split("(")[0].strip()           # call args: Sync(a, b) -> Sync
+        if not span or " " in span or "\t" in span:
+            continue  # `GET /cart`, `Pod sources (apiserver, ...)`, prose
+        if span[0] in "/-.@#$":
+            continue  # route, CLI flag, decorator, template variable
+        if any(c in span for c in "<>[]{}|\\\"'"):
+            continue  # generics, arrays, unions, quoted text
+        # `/` and `,` separate sibling symbols and all are kept;
+        # `::` and `.` qualify one symbol, so only the last segment is taken.
+        for part in re.split(r"[/,;]+", span):
+            part = part.strip().strip("*")
+            if not part:
+                continue
+            if "::" in part:
+                part = part.rsplit("::", 1)[-1]   # Ns::Class::method -> method
             if "." in part:
-                part = part.rsplit(".", 1)[-1]     # Type.Method -> Method
-            if not part or " " in part:
-                continue  # prose, not an identifier
-            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", part) and len(part) > 2:
+                head, _, tail = part.rpartition(".")
+                if tail.lower() in FILE_EXT or not head:
+                    continue  # frontend.yaml, .gitignore
+                part = tail   # Type.Method -> Method
+            if len(part) <= 2 or part.upper() in HTTP_VERBS or part.lower() in NON_SYMBOLS:
+                continue
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", part):
                 out.append(part)
     return out
 
