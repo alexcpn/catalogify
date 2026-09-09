@@ -61,6 +61,23 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
   exit 0
 fi
 
+# A shallow clone has no history to mine, and says so nowhere: `git log`
+# simply returns the few commits that were fetched. Every risk-flagged
+# commit, every revert, every rule this script exists to surface is absent,
+# and the output looks like a quiet repository rather than a truncated one.
+# Warn loudly, because a bundle generated here will be honest and hollow.
+if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then
+  cat >&2 <<'SHALLOW'
+okf-history: WARNING — this is a SHALLOW clone. Git has only the most recent
+  commits, so history mining will find little or nothing, and any concept
+  written from it will have no gotchas and no citations. That is a truncated
+  repository, not a quiet one.
+
+  Fix it before generating:  git fetch --unshallow
+  Or fetch enough depth:     git fetch --deepen=2000
+SHALLOW
+fi
+
 # A path is a test file if it matches any of these. Covers Go, Python,
 # JS/TS, Java, C#, Rust, Ruby, and the usual fixture/testdata directories.
 # One regex, shared by text and JSON modes so the two never disagree.

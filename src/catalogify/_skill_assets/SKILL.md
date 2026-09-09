@@ -12,7 +12,7 @@ description: >-
   "codebase knowledge base".
 license: MIT
 metadata:
-  version: "0.9.1"
+  version: "0.9.2"
   commands:
     - catalogify
 ---
