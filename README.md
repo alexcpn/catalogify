@@ -17,21 +17,27 @@ inventing an answer.
 
 It installs as a portable **Agent Skill**, so it works in Claude Code, Cursor,
 OpenAI Codex, and anything else that reads the open `.agents/skills` standard.
+Your agent follows the skill to generate, update, clarify, or validate a catalog.
+The package also provides a **CLI** for repository scans, history analysis,
+bundle checks, and skill installation.
 For [Spec Kit](https://github.com/github/spec-kit) projects the same workflows
 ship as slash commands in
 [speckit_okf](https://github.com/alexcpn/speckit_okf).
 
 ## Quickstart
 
+Install the package and its agent skill in your terminal:
+
 ```bash
 uv tool install catalogify
 catalogify install
 ```
 
-Then ask your agent, in plain language:
+Restart your agent so it loads the skill, then open the repository you want to
+document. Enter this prompt in the agent chat:
 
-```
-"generate a knowledge catalog for this repo"
+```text
+Use the catalogify skill to generate a knowledge catalog for this repo.
 ```
 
 Then check what it wrote, because you should not take an agent's word for it:
@@ -43,16 +49,22 @@ catalogify verify   knowledge/   # claims — does the repository back them?
 
 [![asciicast](https://asciinema.org/a/xSfPT9wUxCD78mz0.svg)](https://asciinema.org/a/xSfPT9wUxCD78mz0)
 
-Then answer what the machine could not work out:
+Then ask your agent to clarify what the machine could not work out:
 
-```bash
-catalogify clarify knowledge/
+```text
+Use the catalogify skill to clarify the open questions in knowledge/.
 ```
+
+Enter this in the agent chat. **Clarify is an agent skill workflow**, so there
+is no `catalogify clarify` shell subcommand and it does not appear in
+`catalogify --help`. Replace `knowledge/` with your bundle path if needed.
+Answer the agent's questions in the same conversation; you can skip a question
+or say you do not know, and it will remain open.
 
 **This is the step that matters most, and it is the only one a machine cannot do for you.**
 Whatever the generator could not establish from code and history — is this timeout a contract
 or an implementation detail, what happens on partial failure, who owns this — it parks as an
-`open_questions` entry instead of inventing an answer. `clarify` walks you through those
+`open_questions` entry instead of inventing an answer. The clarify workflow walks you through those
 questions, folds your answers into the concepts, and marks each one with a sentinel so later
 regenerations never overwrite it. Your answer outranks the machine's inference permanently.
 
@@ -251,7 +263,9 @@ there is still a human to ask.
 
 ## The four workflows
 
-Ask in plain language and the skill picks one:
+These workflows run through the agent skill. Ask your agent in plain language,
+mention catalogify, and include the repository or bundle path. The skill picks
+the appropriate workflow:
 
 | Workflow | What it does |
 | -------- | ------------ |
@@ -262,8 +276,10 @@ Ask in plain language and the skill picks one:
 
 ## Commands
 
-The deterministic work is five subcommands you can run yourself, with or
-without an agent. Each accepts `--help`.
+The CLI provides five analysis and checking subcommands, plus `install` for
+managing the agent skill. Run these in your terminal, with or without an agent.
+Each accepts `--help`. The generate, update, and clarify workflows are invoked
+through your agent; they are not CLI subcommands.
 
 ```bash
 catalogify inventory                        # repo facts + git churn, as JSON
@@ -397,12 +413,18 @@ skills covering the same ground, so pick one.
 
 ## Usage
 
-```bash
-agent "generate a knowledge catalog for this repo"
-agent "refresh the catalog, the code has moved on"
-agent "resolve the open questions in the catalog"
-agent "validate the catalog"
+Enter one of these prompts in your agent chat after installing the skill:
+
+```text
+Use catalogify to generate a knowledge catalog for this repo.
+Use catalogify to update knowledge/ for changes since its last logged commit.
+Use catalogify to clarify the open questions in knowledge/.
+Use catalogify to validate knowledge/.
 ```
+
+These are prompts for your agent. For a terminal-only structure check, run
+`catalogify validate knowledge/`; to check repository-backed claims, run
+`catalogify verify knowledge/`.
 
 Output lands in `knowledge/` (configurable), ready to commit next to the code:
 
