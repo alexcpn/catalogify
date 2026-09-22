@@ -1,0 +1,53 @@
+# Spec Kit extension manifest
+# Docs: https://github.com/github/spec-kit/blob/main/extensions/EXTENSION-DEVELOPMENT-GUIDE.md
+schema_version: "1.0"
+
+extension:
+  id: "okf"
+  name: "OKF Knowledge Bundle Generator"
+  version: "@VERSION@"   # stamped from pyproject.toml by build.py
+  description: >
+    Generates and maintains an Open Knowledge Format (OKF v0.1) knowledge
+    bundle from a source-code repository. Adds commands to bootstrap a
+    bundle (mining git history for the "why"), incrementally update it,
+    clarify open questions with the user, validate conformance against
+    the OKF spec, and verify that the bundle's claims are actually
+    supported by the repository
+    (https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+  author: "Alex Punnen <alexcpn@gmail.com>"
+  repository: "https://github.com/alexcpn/catalogify.git"
+  homepage: "https://github.com/alexcpn/catalogify"
+  license: "MIT"
+  tags: [knowledge, okf, documentation, metadata, catalog]
+  category: "documentation"
+  effect: "read-write"   # creates/modifies files under the knowledge bundle dir
+
+requires:
+  speckit_version: ">=0.12.0"
+
+# This file is the source; the installable extension is assembled by
+# integrations/speckit/build.py. scripts/bash/ and scripts/python/ in the
+# built tree are plain supporting files, not manifest-declared assets: the
+# installer copies the whole tree to .specify/extensions/okf/, and the
+# commands reference the scripts by that path.
+provides:
+  commands:
+    - name: "speckit.okf.generate"
+      file: "commands/generate.md"
+      description: "Generate an OKF knowledge bundle from this repository's source code and git history"
+    - name: "speckit.okf.update"
+      file: "commands/update.md"
+      description: "Incrementally refresh the bundle from changes since the last logged commit"
+    - name: "speckit.okf.clarify"
+      file: "commands/clarify.md"
+      description: "Resolve the open questions the bundle has parked for a human"
+    - name: "speckit.okf.validate"
+      file: "commands/validate.md"
+      description: "Check the bundle against the OKF v0.1 conformance rules"
+    - name: "speckit.okf.verify"
+      file: "commands/verify.md"
+      description: "Check that the bundle's claims are supported by the repository"
+  config:
+    - name: "okf-config.yml"
+      template: "okf-config.template.yml"
+      required: false
