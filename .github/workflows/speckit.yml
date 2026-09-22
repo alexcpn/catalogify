@@ -1,0 +1,48 @@
+name: Spec Kit extension
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # only used by the release upload step
+    steps:
+      - uses: actions/checkout@v4
+
+      # The build is the test: it fails if a workflow document was reworded in
+      # a way the command transform no longer matches, or if any skill-only
+      # text (catalogify CLI calls, SKILL.md, $BUNDLE_DIR...) would reach a
+      # Spec Kit command.
+      - name: Build the extension
+        run: python3 integrations/speckit/build.py --zip
+
+      - name: Shell scripts parse
+        run: for f in build/speckit-okf/scripts/bash/*.sh; do bash -n "$f"; done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: speckit-okf
+          path: build/speckit-okf-*.zip
+
+      # Spec Kit installs from this asset:
+      #   specify extension add okf --from https://github.com/alexcpn/catalogify/releases/download/v<version>/speckit-okf-<version>.zip
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          zip=$(ls build/speckit-okf-*.zip)
+          expected="build/speckit-okf-${TAG#v}.zip"
+          if [ "$zip" != "$expected" ]; then
+            echo "release tag $TAG does not match pyproject.toml ($zip)" >&2
+            exit 1
+          fi
+          gh release upload "$TAG" "$zip" --clobber
