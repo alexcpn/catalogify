@@ -21,8 +21,8 @@ Your agent follows the skill to generate, update, clarify, or validate a catalog
 The package also provides a **CLI** for repository scans, history analysis,
 bundle checks, and skill installation.
 For [Spec Kit](https://github.com/github/spec-kit) projects the same workflows
-ship as slash commands in
-[speckit_okf](https://github.com/alexcpn/speckit_okf).
+ship as slash commands, built from this repository
+([below](#using-it-with-spec-kit)).
 
 ## Quickstart
 
@@ -388,14 +388,16 @@ correctness-affecting upgrade.
 
 ## Using it with Spec Kit
 
-The same four workflows are also packaged as a
-[Spec Kit](https://github.com/github/spec-kit) extension at
-**[alexcpn/speckit_okf](https://github.com/alexcpn/speckit_okf)**, for teams
-who prefer explicit slash commands over asking in plain language:
+The same workflows are also packaged as a
+[Spec Kit](https://github.com/github/spec-kit) extension, for teams who prefer
+explicit slash commands over asking in plain language. It is built from this
+repository and attached to every release, so it runs the same scripts and
+follows the same workflow as the version of catalogify it ships with. It does
+not need catalogify installed.
 
 ```bash
 specify extension add okf --from \
-  https://github.com/alexcpn/speckit_okf/archive/refs/tags/v0.3.0.zip
+  https://github.com/alexcpn/catalogify/releases/download/v0.9.2/speckit-okf-0.9.2.zip
 ```
 
 | Spec Kit command | Equivalent here |
@@ -404,6 +406,13 @@ specify extension add okf --from \
 | `/speckit.okf.update` | "refresh the catalog" |
 | `/speckit.okf.clarify` | "resolve the open questions" |
 | `/speckit.okf.validate` | `catalogify validate knowledge/` |
+| `/speckit.okf.verify` | `catalogify verify knowledge/` |
+
+The extension reads its config from `.specify/extensions/okf/okf-config.yml`.
+It used to live in a separate repository,
+[alexcpn/speckit_okf](https://github.com/alexcpn/speckit_okf), which is being
+retired; its last release there was 0.6.0. To build the extension from a checkout,
+see [`integrations/speckit/`](integrations/speckit/README.md).
 
 Both produce the same OKF v0.1 bundle. Use `catalogify` if you want the
 standalone CLI and an agent skill that loads on its own; use the extension if
