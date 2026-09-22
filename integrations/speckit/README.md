@@ -32,6 +32,24 @@ specify extension add --dev build/speckit-okf
 
 Output lands in `knowledge/` (configurable), ready to commit alongside your code.
 
+### Command names by agent
+
+Spec Kit names commands after your agent integration. In **Claude Code** and
+**Codex** they are skills with hyphens: `/speckit-okf-generate`,
+`/speckit-okf-clarify`, `/speckit-okf-update`, `/speckit-okf-validate` and
+`/speckit-okf-verify`. Other agents get the dotted names above.
+
+If a command is missing, check where it was registered. For Claude Code that
+is `.claude/skills/speckit-okf-*`; for Codex, `.agents/skills/speckit-okf-*`.
+Extensions are registered for the integrations that exist at install time, so
+an integration added afterwards does not get them. Reinstall with `--force`:
+
+```bash
+specify extension add okf --force --from <the same URL>
+```
+
+Restart the agent afterwards so it picks up the new skills.
+
 ## Configuration
 
 Copy `okf-config.template.yml` to `.specify/extensions/okf/okf-config.yml` to

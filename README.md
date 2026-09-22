@@ -408,6 +408,13 @@ specify extension add okf --from \
 | `/speckit.okf.validate` | `catalogify validate knowledge/` |
 | `/speckit.okf.verify` | `catalogify verify knowledge/` |
 
+**Command names depend on your agent.** Spec Kit names them after the
+integration you chose. Claude Code and Codex register them as skills with
+hyphens (`/speckit-okf-generate`, `/speckit-okf-verify`, …); other agents get
+the dotted form shown here. Install the extension *after* choosing your agent
+integration. Adding an integration later does not register extensions that
+are already installed, so rerun the install with `--force`.
+
 The extension reads its config from `.specify/extensions/okf/okf-config.yml`.
 It used to live in a separate repository,
 [alexcpn/speckit_okf](https://github.com/alexcpn/speckit_okf), which is being
