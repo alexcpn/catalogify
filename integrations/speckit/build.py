@@ -281,13 +281,21 @@ def build(out):
 
 
 def make_zip(out, ver):
-    """Spec Kit expects extension.yml at the top of the archive."""
+    """Spec Kit expects extension.yml at the top of the archive.
+
+    Deterministic: fixed timestamps (the ZipInfo default), sorted entries and
+    fixed modes, so the SHA-256 recorded in the Spec Kit catalog can be
+    reproduced from the tagged commit.
+    """
     archive = out.parent / f"speckit-okf-{ver}.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
         for path in sorted(out.rglob("*")):
             if path.is_file():
                 info = zipfile.ZipInfo(str(path.relative_to(out)))
-                info.external_attr = (path.stat().st_mode & 0o777) << 16
+                # Fixed modes, not the builder's umask, so any checkout
+                # rebuilds the released archive byte for byte.
+                mode = 0o755 if path.suffix == ".sh" else 0o644
+                info.external_attr = mode << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
                 z.writestr(info, path.read_bytes())
     return archive
