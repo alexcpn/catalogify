@@ -8,14 +8,18 @@ captures the metadata, context, and curated insight surrounding this codebase.
 Spec: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
 
 Scope hints: use any focus/scope the user gave (a subdirectory, a
-subsystem, a granularity preference); otherwise cover the whole repo.
+subsystem, or an explicit `detail: detailed` preference); otherwise cover
+the whole repo.
 
 ## Phase 0 — Configuration and inventory
 
-1. Resolve `CONFIG` and `BUNDLE_DIR` as described in `SKILL.md`. If no
-   config file exists, use the defaults documented in
+1. Resolve `CONFIG` and `BUNDLE_DIR` as described in `SKILL.md`. Resolve one
+   effective detail mode: an explicit `detail: detailed` request in the
+   user's prompt wins for this run; otherwise use `okf.detail` from the
+   config, or `default` by default. Existing concept-coverage behavior is
+   preserved. If no config file exists, use the defaults documented in
    `okf-config.template.yml`, installed next to `SKILL.md`
-   (`bundle_dir: knowledge/`, `granularity: medium`).
+   (`bundle_dir: knowledge/`, `detail: default`).
 2. **Guard against clobbering curation.** If `BUNDLE_DIR` already exists
    and contains one or more `.md` files (whether or not `log.md` is
    present — a hand-seeded or partial bundle is still real curation),
@@ -314,12 +318,20 @@ form works; prefer bundle-relative there, as the spec recommends.
 ### Mine git history for the "why" — and follow the reverts
 
 For each non-trivial concept, run the per-path history helper on its
-`source_files` before writing the body:
+`source_files` before writing the body. In `detailed` mode, widen the bounded
+sample for complex concepts and follow more related commits when they explain
+an interface, dependency, or invariant. In `default` mode, retain the
+existing bounded history effort.
 
 ```bash
 catalogify history <source-file-or-dir>
 # machine-readable: add --json ; cap the list: --limit N
 ```
+
+The detail mode changes the analysis budget, not the evidence standard: every
+asserted gotcha still needs a relevant citation, and uncertainty still becomes
+an `open_questions` entry. Detailed mode must not create additional concepts;
+use `granularity` for that existing coverage decision.
 
 It returns the creation commit, commit count, recent subjects, and — most
 valuably — **revert/hotfix/risk-flagged commits** (reverts, hotfixes,

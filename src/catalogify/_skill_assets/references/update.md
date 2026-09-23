@@ -4,8 +4,9 @@ You are acting as an **OKF enrichment agent** performing an incremental
 update. Never rewrite the whole bundle — the bundle contains human
 curation you must preserve.
 
-Scope hints: honor any scope the user gave; otherwise process every
-change in the diff range.
+Scope hints: honor any scope the user gave; an explicit `detail: detailed`
+request enables deeper analysis for this run; otherwise use the configured
+detail mode and process every change in the diff range.
 
 ## Requires git
 
@@ -14,6 +15,19 @@ control. If the project is not a git repository, stop and tell the user: the
 bundle can only be refreshed by re-running the generate workflow over the
 current tree, and incremental update becomes available once the project is
 under version control.
+
+## Detail mode during update
+
+An update is surgical by default. Do not expand or collapse the bundle merely
+because `.okf-config.yml` changed: preserve the existing concept structure and
+human curation. `default` retains the existing update behavior. `detailed`
+enriches refreshed sections and newly created concepts with deeper interface,
+dependency, history, gotcha, and open-question analysis, but does not create
+additional concepts or change the existing `granularity` coverage decision.
+
+Never overwrite `<!-- clarified: ... -->` content. When a requested level
+conflicts with clarified content or an existing concept boundary, preserve the
+human-confirmed material and report the conflict.
 
 ## Steps
 

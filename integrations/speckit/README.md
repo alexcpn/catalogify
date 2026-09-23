@@ -53,8 +53,18 @@ Restart the agent afterwards so it picks up the new skills.
 ## Configuration
 
 Copy `okf-config.template.yml` to `.specify/extensions/okf/okf-config.yml` to
-change the bundle directory, excludes, type mappings, layout or granularity.
+change the bundle directory, excludes, type mappings, layout or detail mode.
 Defaults work without any config.
+
+The `okf.detail` knob is `default` unless configured otherwise. Set it to
+`detailed` for deeper interfaces, dependencies, history, gotchas, open
+questions, and explanatory prose without changing concept coverage. Existing
+concept-coverage behavior is preserved.
+
+For a single command, include an explicit override in its arguments, such as
+`/speckit.okf.generate detail: detailed`. The override does not change the
+config file. During `update`, the existing bundle structure and clarified
+content are preserved.
 
 ## For maintainers
 

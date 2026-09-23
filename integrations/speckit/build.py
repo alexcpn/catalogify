@@ -109,8 +109,8 @@ COMMAND_TITLES = {
 }
 
 COMMAND_ARGS = {
-    "generate": "User input (optional focus/scope hints):",
-    "update": "User input (optional scope hints):",
+    "generate": "User input (optional focus/scope hints or `detail: detailed` override):",
+    "update": "User input (optional scope hints or explicit `detail: detailed` override):",
     "clarify": "User input (optional focus hints):",
     "validate": "User input (optional path override):",
 }
@@ -118,7 +118,8 @@ COMMAND_ARGS = {
 # The skill's scope-hint paragraph becomes $ARGUMENTS.
 SCOPE_HINTS = [
     "Scope hints: use any focus/scope the user gave (a subdirectory, a\n"
-    "subsystem, a granularity preference); otherwise cover the whole repo.",
+    "subsystem, or an explicit `detail: detailed` preference); otherwise cover\n"
+    "the whole repo.",
     "Scope hints: if the user named a bundle path, validate that one.",
     "Scope hints: if the user named a subdirectory or a concept, focus\nthere; otherwise cover the whole bundle.",
 ]
@@ -133,13 +134,19 @@ _RESOLVE = f"Read `bundle_dir` from `{EXT}/okf-config.yml`"
 
 FILE_RULES = {
     "generate": [
-        ("1. Resolve `CONFIG` and `BUNDLE_DIR` as described in `SKILL.md`. If no\n"
-         "   config file exists, use the defaults documented in\n"
+        ("1. Resolve `CONFIG` and `BUNDLE_DIR` as described in `SKILL.md`. Resolve one\n"
+         "   effective detail mode: an explicit `detail: detailed` request in the\n"
+         "   user's prompt wins for this run; otherwise use `okf.detail` from the\n"
+         "   config, or `default` by default. Existing concept-coverage behavior is\n"
+         "   preserved. If no config file exists, use the defaults documented in\n"
          "   `okf-config.template.yml`, installed next to `SKILL.md`\n"
-         "   (`bundle_dir: knowledge/`, `granularity: medium`).",
+         "   (`bundle_dir: knowledge/`, `detail: default`).",
          f"1. Load configuration from `{EXT}/okf-config.yml` if\n"
          "   it exists; otherwise use the defaults in `okf-config.template.yml`\n"
-         "   (`bundle_dir: knowledge/`, `granularity: medium`)."),
+         "   (`bundle_dir: knowledge/`, `detail: default`).\n"
+         "   Resolve one effective detail mode: an explicit `detail: detailed`\n"
+         "   request in the user's prompt wins for this run; otherwise use the\n"
+         "   configured value. Existing concept-coverage behavior is preserved."),
         ("`catalogify inventory`", "the inventory script"),
         ("that `catalogify clarify` walks", "that `/speckit.okf.clarify` walks"),
         # Bundles record which form produced them.

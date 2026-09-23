@@ -40,6 +40,14 @@ document. Enter this prompt in the agent chat:
 Use the catalogify skill to generate a knowledge catalog for this repo.
 ```
 
+The default preserves the existing output depth. To request deeper explanations
+for a run, add `detail: detailed`:
+
+```text
+Use the catalogify skill to generate a detailed knowledge catalog for this repo.
+Use detail: detailed.
+```
+
 Then check what it wrote, because you should not take an agent's word for it:
 
 ```bash
@@ -457,14 +465,20 @@ knowledge/
 └── operations/…        # type: Pipeline / Configuration / Playbook
 ```
 
-On a monorepo, start with `granularity: coarse` and raise
-`OKF_INVENTORY_CAP` above its default of 150. Raw churn skews toward generated
-files and build config, so invest in the `exclude` list.
+On a monorepo, raise `OKF_INVENTORY_CAP` above its default of 150. Raw churn
+skews toward generated files and build config, so invest in the `exclude` list.
+
+The separate `okf.detail` setting defaults to `default`, which preserves
+existing output. Set it to `detailed` for deeper interfaces, dependencies,
+history, gotchas, open questions, and explanatory prose without changing
+concept coverage. In an agent prompt or Spec Kit command, an explicit request
+such as `detail: detailed` overrides the config for that run without editing
+it.
 
 ## Configuration
 
 Everything works with no config. To change the bundle directory, resource URI
-base, excludes, type mappings, layout, granularity, or the clarify question
+base, excludes, type mappings, layout, detail mode, or the clarify question
 budget, copy the annotated template into your repo root:
 
 ```bash

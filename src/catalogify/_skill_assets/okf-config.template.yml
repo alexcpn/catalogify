@@ -54,11 +54,17 @@ okf:
     - "operations"     # playbooks, runbooks, pipelines, configs
     - "references"     # mirrored external material
 
-  # Granularity control: don't create a concept for every file.
-  # "coarse"  = services + top-level modules + APIs + data models
-  # "medium"  = coarse + significant submodules and configs (default)
-  # "fine"    = medium + per-file concepts for complex files
+  # Existing concept-coverage behavior. Leave unchanged unless you explicitly
+  # need to tune the legacy coverage setting.
   granularity: "medium"
+
+  # Detail controls how deeply each selected concept is explained. An explicit
+  # "detail: detailed" request in the current prompt overrides this default
+  # for that run; otherwise this value is used.
+  # "default"  = existing catalogify behavior.
+  # "detailed" = deeper interfaces, dependencies, history, gotchas and
+  #              answerable open questions, without changing concept coverage.
+  detail: "default"
 
   # clarify workflow behavior.
   clarify:

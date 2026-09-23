@@ -86,10 +86,19 @@ has not been refreshed: tell the user to open a new terminal, or to re-run
 Look for `.okf-config.yml` in the repo root and use it if present; otherwise
 use the documented defaults. `okf-config.template.yml`, installed next to this
 file, is the annotated template and the authoritative list of defaults:
-`bundle_dir: knowledge/`, `granularity: medium`, a standard `exclude` list,
+`bundle_dir: knowledge/`, `detail: default`, a standard `exclude` list,
 `resource_base` derived from the git remote, type mappings, layout, and
-`clarify.max_questions: 20`. Copy it to `.okf-config.yml` when the user wants
-to change any of that. Everything works with no config at all.
+`clarify.max_questions: 20`. Existing concept-coverage settings are left
+unchanged. Copy the template to `.okf-config.yml` when the user wants to
+change any of that. Everything works with no config at all.
+
+The separate `okf.detail` knob accepts `default` or `detailed`. `default`
+preserves existing catalogify behavior; `detailed` asks for deeper interfaces,
+dependencies, history, gotchas, open questions, and explanatory prose without
+changing which concepts are selected. An explicit `detail: detailed` request
+in the current prompt overrides config for that run without changing the
+config. Otherwise use the configured value. Updates preserve the existing
+bundle structure and human curation by default.
 
 Pass the config through whenever you found one — both `catalogify inventory --config
 <path>` and `catalogify validate --config <path>` honor its `exclude` list; without
