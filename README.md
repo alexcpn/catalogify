@@ -22,63 +22,238 @@ The package also provides a **CLI** for repository scans, history analysis,
 bundle checks, and skill installation.
 For [Spec Kit](https://github.com/github/spec-kit) projects the same workflows
 ship as slash commands, built from this repository
-([below](#using-it-with-spec-kit)).
+([below](#spec-kit-extension)).
 
-## Quickstart
+## Quickstart: agent skill
 
-Install the package and its agent skill in your terminal:
+Install the package from PyPI, then copy its skill into your agent:
 
 ```bash
 uv tool install catalogify
 catalogify install
 ```
 
-Restart your agent so it loads the skill, then open the repository you want to
-document. Enter this prompt in the agent chat:
-
-```text
-Use the catalogify skill to generate a knowledge catalog for this repo.
-```
-
-The default preserves the existing output depth. To request deeper explanations
-for a run, add `detail: detailed`:
-
-```text
-Use the catalogify skill to generate a detailed knowledge catalog for this repo.
-Use detail: detailed.
-```
-
-Then check what it wrote, because you should not take an agent's word for it:
+`uv tool install catalogify` uses the published PyPI version. **To test changes
+on `main` before a release**, including the new `detail` setting, install from
+GitHub instead:
 
 ```bash
-catalogify validate knowledge/   # structure — is the bundle well-formed?
-catalogify verify   knowledge/   # claims — does the repository back them?
+uv tool install --force git+https://github.com/alexcpn/catalogify
+catalogify install
+```
+
+The second command matters: your agent reads a copied skill, so upgrading the
+package alone does not update its instructions. Restart the agent after either
+installation. Python 3.9+ and `bash` are required; git adds history mining and
+incremental updates but is optional. See [Requirements](#requirements).
+
+Open the repository you want to document and **enter these in the agent chat**:
+
+```text
+Use catalogify to generate a knowledge catalog for this repo.
+Use catalogify to clarify the open questions in knowledge/.
+Use catalogify to validate knowledge/ and verify its claims against the repo.
+```
+
+Run the prompts in order. The first creates `knowledge/`; the second asks you
+about facts the agent could not establish. Your answers become part of the
+catalog and survive later updates. You can skip a question and leave it open.
+After code changes, ask your agent to update the catalog. The catalogify skill
+handles the supporting terminal commands for you.
+
+For deeper explanations, add `detail: detailed` to the generate or update
+prompt. This changes the depth of each concept without adding more concepts:
+
+```text
+Use catalogify to generate a knowledge catalog for this repo. Use detail: detailed.
 ```
 
 [![asciicast](https://asciinema.org/a/xSfPT9wUxCD78mz0.svg)](https://asciinema.org/a/xSfPT9wUxCD78mz0)
 
-Then ask your agent to clarify what the machine could not work out:
+## Spec Kit extension
 
-```text
-Use the catalogify skill to clarify the open questions in knowledge/.
+If your project already uses [Spec Kit](https://github.com/github/spec-kit),
+install the extension instead of the standalone skill. It supplies the same
+workflows as agent commands and does not require `catalogify` to be installed.
+Install the published extension after choosing your Spec Kit agent integration:
+
+```bash
+specify extension add okf --from \
+  https://github.com/alexcpn/catalogify/releases/download/v0.9.2/speckit-okf-0.9.2.zip
 ```
 
-Enter this in the agent chat. **Clarify is an agent skill workflow**, so there
-is no `catalogify clarify` shell subcommand and it does not appear in
-`catalogify --help`. Replace `knowledge/` with your bundle path if needed.
-Answer the agent's questions in the same conversation; you can skip a question
-or say you do not know, and it will remain open.
+**To test changes on `main` before a release**, build and install the extension
+from this checkout:
 
-**This is the step that matters most, and it is the only one a machine cannot do for you.**
-Whatever the generator could not establish from code and history — is this timeout a contract
-or an implementation detail, what happens on partial failure, who owns this — it parks as an
-`open_questions` entry instead of inventing an answer. The clarify workflow walks you through those
-questions, folds your answers into the concepts, and marks each one with a sentinel so later
-regenerations never overwrite it. Your answer outranks the machine's inference permanently.
+```bash
+python3 integrations/speckit/build.py
+specify extension add --dev build/speckit-okf
+```
 
-Everything above this line can be regenerated in six minutes. What you add here cannot.
+Then **enter these in your agent chat** (use the command names your agent
+registered):
 
-### Worked examples
+```text
+/speckit.okf.generate
+/speckit.okf.clarify
+/speckit.okf.validate
+/speckit.okf.verify
+```
+
+After code changes, use `/speckit.okf.update`. Add `detail: detailed` to
+`generate` or `update` arguments when you want deeper explanations for that
+run, for example `/speckit.okf.generate detail: detailed`.
+
+| Spec Kit command | Purpose |
+| --- | --- |
+| `/speckit.okf.generate` | Create a catalog from code and git history. |
+| `/speckit.okf.update` | Refresh concepts affected by code changes. |
+| `/speckit.okf.clarify` | Ask you to resolve open questions. |
+| `/speckit.okf.validate` | Check the bundle's OKF structure. |
+| `/speckit.okf.verify` | Check claims against the repository. |
+
+**Command names depend on your agent.** Spec Kit names them after the
+integration you chose. Claude Code and Codex register them as skills with
+hyphens (`/speckit-okf-generate`, `/speckit-okf-verify`, …); other agents get
+the dotted form shown here. Install the extension *after* choosing your agent
+integration. Adding an integration later does not register extensions that
+are already installed, so rerun the install with `--force`.
+
+The extension reads its config from `.specify/extensions/okf/okf-config.yml`.
+See the [extension guide](integrations/speckit/README.md) for more installation
+details. Both installation routes produce the same OKF v0.1 bundle; installing
+both registers two skills for the same workflows.
+
+## The four workflows
+
+These workflows run through the agent skill or the Spec Kit extension. Ask your
+agent in plain language with the skill, or use the extension commands above:
+
+| Workflow | What it does |
+| -------- | ------------ |
+| **generate** | Inventory scan, git-history mining, concept plan, concept documents, `index.md` files, `log.md`, validation. |
+| **update** | Diffs since the last logged commit; refreshes only stale concepts, deprecates orphans, adds new ones, preserves human curation. |
+| **clarify** | Asks you about the `open_questions` the other workflows parked, then folds the answers in as cited, curation-protected knowledge. |
+| **validate** | OKF §9 conformance check plus a quality spot-check. |
+
+## What you get
+
+The generated catalog lives in `knowledge/` by default, ready to commit next
+to the code:
+
+```
+knowledge/
+├── index.md            # okf_version: "0.1" + directory of everything
+├── log.md              # dated history, each block records a commit SHA
+├── architecture/
+│   └── overview.md     # type: Reference — the "start here" concept
+├── services/…          # type: Service
+├── modules/…           # type: Module
+├── apis/…              # type: API Endpoint / API Resource
+├── data/…              # type: Data Model / Database Table
+└── operations/…        # type: Pipeline / Configuration / Playbook
+```
+
+On a monorepo, raise `OKF_INVENTORY_CAP` above its default of 150. Raw churn
+skews toward generated files and build config, so invest in the `exclude` list.
+
+The `okf.detail` setting defaults to `default`, preserving existing output.
+`detailed` asks for deeper interfaces, dependencies, history, gotchas, open
+questions, and explanatory prose without changing which concepts are selected.
+An explicit `detail: detailed` request in your agent prompt or Spec Kit command
+overrides the config for that run without editing it.
+
+## Configuration
+
+Everything works with no config. To change the bundle directory, resource URI
+base, excludes, type mappings, layout, detail mode, or the clarify question
+budget, copy the annotated template into your repo root:
+
+```bash
+cp ~/.claude/skills/catalogify/okf-config.template.yml .okf-config.yml
+```
+
+The agent passes this config to its tools automatically once the file exists.
+The inventory and validation tools both honor its `exclude` list.
+
+## Upgrade
+
+**Upgrading is two steps.**
+`catalogify install` *copies* the skill into each agent's skills directory. Those
+copies do not track the package, so a new version of the CLI leaves your agents
+following the old instructions.
+
+```bash
+uv tool upgrade catalogify     # 1. the CLI
+catalogify install             # 2. the skill copies (overwrites by default)
+```
+
+Check that both actually moved — they are versioned independently:
+
+```bash
+catalogify --version                                  # the CLI
+grep -m1 version: ~/.claude/skills/catalogify/SKILL.md # the skill your agent reads
+```
+
+Then restart your agent so it reloads the skill.
+
+### Installing an unreleased version
+
+`uv tool install catalogify` and `uv tool upgrade catalogify` use PyPI, so they
+do not include changes merged after the last release. To run `main` or a local
+checkout, force a reinstall over the existing one:
+
+```bash
+uv tool install --force git+https://github.com/alexcpn/catalogify   # from main
+uv tool install --force /path/to/catalogify                         # from a checkout
+catalogify install                                                  # then the skill, as always
+```
+
+`catalogify install` already forces overwrites, so it needs no flag of its own.
+`--force` there exists only for `--scope project`, which refuses to clobber an
+existing project-local skill without it.
+Installing from GitHub does not change the declared package version, so
+`catalogify --version` can still show the same number as the PyPI release.
+
+By default, `catalogify install` copies the skill into every agent's user-global
+skills directory (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`,
+`~/.agents/skills`). Use `--agents claude,cursor` to target specific agents.
+The bundled `install.sh` / `install.ps1` do both installation steps, install
+`uv` if needed, and fall back to `pip install --user`.
+
+### Project-scoped installs
+
+`--scope project` copies the skill into `./.<agent>/skills` instead of your home
+directory. Those copies are upgraded the same way, but only from inside the
+project:
+
+```bash
+cd /path/to/your/repo
+catalogify install --scope project --force
+```
+
+`catalogify install --list` shows every location the skill is installed, which is
+the quickest way to find copies you have forgotten about.
+
+### Telling which version wrote a bundle
+
+Every concept records the generator in its frontmatter:
+
+```bash
+grep -rh generated_by knowledge --include='*.md' | sort -u
+```
+
+A bundle generated by an older version was written under that version's rules —
+worth checking before trusting it, and worth regenerating after a
+correctness-affecting upgrade.
+
+## Requirements
+
+- **Python 3.9+**
+- **`bash`** — present on Linux and macOS; on Windows the wrapper finds the `bash.exe` that ships with [Git for Windows](https://git-scm.com/download/win).
+- **`git`** — *optional*. Used for churn ranking, history mining and incremental updates. Everything else works without it; see [What it runs on](#what-it-runs-on).
+
+## Worked examples
 
 Two finished catalogs, published unedited. Start at the architecture overview in either and
 click through.
@@ -105,8 +280,6 @@ Over 91% of each run was served from cache, so the billed figure is lower again.
 
 Every run behind those figures — including the ones that went wrong — is recorded in
 [EXPERIMENTS.md](EXPERIMENTS.md), with what it cost and what the checker found.
-
-Already installed? Upgrading is [two steps](#upgrade), not one.
 
 ## Why it exists
 
@@ -139,7 +312,7 @@ with Graphify run over the same directory:
 | **catalogify service entry** | **2.6 KB** | **676** |
 
 At 676 tokens per service, a 90-service catalog is roughly **61,000 tokens**
-and fits in one call alongside the specification. See [Benchmark](#benchmark)
+and fits in one call alongside the specification. See [Reproducing the benchmark](#reproducing-the-benchmark)
 to reproduce these numbers.
 
 ## How this relates to what else exists
@@ -269,226 +442,6 @@ This recovers fragments, not the theory. For everything still missing, the
 generator raises an `open_question` and the clarify workflow asks a human while
 there is still a human to ask.
 
-## The four workflows
-
-These workflows run through the agent skill. Ask your agent in plain language,
-mention catalogify, and include the repository or bundle path. The skill picks
-the appropriate workflow:
-
-| Workflow | What it does |
-| -------- | ------------ |
-| **generate** | Inventory scan, git-history mining, concept plan, concept documents, `index.md` files, `log.md`, validation. |
-| **update** | Diffs since the last logged commit; refreshes only stale concepts, deprecates orphans, adds new ones, preserves human curation. |
-| **clarify** | Asks you about the `open_questions` the other workflows parked, then folds the answers in as cited, curation-protected knowledge. |
-| **validate** | OKF §9 conformance check plus a quality spot-check. |
-
-## Commands
-
-The CLI provides five analysis and checking subcommands, plus `install` for
-managing the agent skill. Run these in your terminal, with or without an agent.
-Each accepts `--help`. The generate, update, and clarify workflows are invoked
-through your agent; they are not CLI subcommands.
-
-```bash
-catalogify inventory                        # repo facts + git churn, as JSON
-catalogify history pkg/foo --limit 5        # the reverts and hotfixes behind a path
-catalogify cochange pkg/foo --depth 3       # what changes when this changes
-catalogify validate knowledge/              # OKF v0.1 §9 conformance (structure)
-catalogify verify knowledge/                # do its claims survive the repo?
-catalogify install [--list] [--uninstall]   # manage the agent skill
-```
-
-- **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, per-file commit churn, and any untracked subtrees found on disk so they can be named and skipped rather than mistaken for part of the project. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
-- **`history`** returns the creation commit, recent subjects, and the revert / hotfix / risk-flagged commits where invariants hide, each with the files it touched. A commit that changed only test files is marked `[TEST-ONLY]` so a "fix goroutine leak in foo_test.go" is never mistaken for a production invariant. Diff-free by default so historical secrets do not leak; `--patch` opts in.
-- **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. Two services can be coupled through a wire contract, a shared schema or a deployment ordering rule while sharing no import at all, and that relationship exists in no import graph, no call graph and no snapshot of the working tree. It shows up only in commits.
-- **`validate`** enforces OKF §9: four error classes, ten warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
-- **`verify`** is a check on *truth*, and it is the one that matters. Every commit the bundle cites must exist and must touch that concept's own `source_files`; a commit that changed only test files cannot back a production invariant; every symbol in an `# Interfaces` table must appear in non-test code; a `# Gotchas` section that cites nothing is an unsupported claim; and every `source_files` path must be tracked by git, so a vendored dependency or an imported project sitting in your working tree cannot be written up as if it were yours. Run it in CI and an agent can no longer quietly write a confident sentence with nothing behind it.
-
-Each is also installed under a bare `okf-` name (`okf-inventory`,
-`okf-history`, `okf-cochange`, `okf-validate`, `okf-verify`); the first two and
-`okf-validate` carry over from the package's previous life as `okf_skill`.
-
-## Requirements
-
-- **Python 3.9+**
-- **`bash`** — present on Linux and macOS; on Windows the wrapper finds the `bash.exe` that ships with [Git for Windows](https://git-scm.com/download/win).
-- **`git`** — *optional*. Used for churn ranking, history mining and incremental updates. Everything else works without it; see [What it runs on](#what-it-runs-on).
-
-## Install
-
-```bash
-uv tool install catalogify     # or: pip install catalogify
-catalogify install             # copy the skill into your agents
-```
-
-Restart your agent afterwards so it picks up the skill.
-To move an existing install to a newer version, see [Upgrade](#upgrade) — it is
-two steps, not one. `catalogify install`
-copies it into every agent's user-global skills directory
-(`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`,
-`~/.agents/skills`). Use `--agents claude,cursor` to target specific ones and
-`--scope project` to install into `./.<agent>/skills` instead.
-
-The bundled `install.sh` / `install.ps1` do both steps, install `uv` if it is
-missing, and fall back to `pip install --user`.
-
-## Upgrade
-
-**Upgrading is two steps, and skipping the second one silently does nothing.**
-`catalogify install` *copies* the skill into each agent's skills directory. Those
-copies do not track the package, so a new version of the CLI leaves your agents
-following the old instructions.
-
-```bash
-uv tool upgrade catalogify     # 1. the CLI
-catalogify install             # 2. the skill copies (overwrites by default)
-```
-
-Check that both actually moved — they are versioned independently:
-
-```bash
-catalogify --version                                  # the CLI
-grep -m1 version: ~/.claude/skills/catalogify/SKILL.md # the skill your agent reads
-```
-
-Then restart your agent so it reloads the skill.
-
-### Installing an unreleased version
-
-`uv tool upgrade` only sees what is on PyPI. To run a branch, a tag, or a local
-checkout, force a reinstall over the existing one:
-
-```bash
-uv tool install --force git+https://github.com/alexcpn/catalogify   # from main
-uv tool install --force /path/to/catalogify                         # from a checkout
-catalogify install                                                  # then the skill, as always
-```
-
-`catalogify install` already forces overwrites, so it needs no flag of its own.
-`--force` there exists only for `--scope project`, which refuses to clobber an
-existing project-local skill without it.
-
-### Project-scoped installs
-
-`--scope project` copies the skill into `./.<agent>/skills` instead of your home
-directory. Those copies are upgraded the same way, but only from inside the
-project:
-
-```bash
-cd /path/to/your/repo
-catalogify install --scope project --force
-```
-
-`catalogify install --list` shows every location the skill is installed, which is
-the quickest way to find copies you have forgotten about.
-
-### Telling which version wrote a bundle
-
-Every concept records the generator in its frontmatter:
-
-```bash
-grep -rh generated_by knowledge --include='*.md' | sort -u
-```
-
-A bundle generated by an older version was written under that version's rules —
-worth checking before trusting it, and worth regenerating after a
-correctness-affecting upgrade.
-
-## Using it with Spec Kit
-
-The same workflows are also packaged as a
-[Spec Kit](https://github.com/github/spec-kit) extension, for teams who prefer
-explicit slash commands over asking in plain language. It is built from this
-repository and attached to every release, so it runs the same scripts and
-follows the same workflow as the version of catalogify it ships with. It does
-not need catalogify installed.
-
-```bash
-specify extension add okf --from \
-  https://github.com/alexcpn/catalogify/releases/download/v0.9.2/speckit-okf-0.9.2.zip
-```
-
-| Spec Kit command | Equivalent here |
-| --- | --- |
-| `/speckit.okf.generate` | "generate a knowledge catalog for this repo" |
-| `/speckit.okf.update` | "refresh the catalog" |
-| `/speckit.okf.clarify` | "resolve the open questions" |
-| `/speckit.okf.validate` | `catalogify validate knowledge/` |
-| `/speckit.okf.verify` | `catalogify verify knowledge/` |
-
-**Command names depend on your agent.** Spec Kit names them after the
-integration you chose. Claude Code and Codex register them as skills with
-hyphens (`/speckit-okf-generate`, `/speckit-okf-verify`, …); other agents get
-the dotted form shown here. Install the extension *after* choosing your agent
-integration. Adding an integration later does not register extensions that
-are already installed, so rerun the install with `--force`.
-
-The extension reads its config from `.specify/extensions/okf/okf-config.yml`.
-It used to live in a separate repository,
-[alexcpn/speckit_okf](https://github.com/alexcpn/speckit_okf), which is being
-retired; its last release there was 0.6.0. To build the extension from a checkout,
-see [`integrations/speckit/`](integrations/speckit/README.md).
-
-Both produce the same OKF v0.1 bundle. Use `catalogify` if you want the
-standalone CLI and an agent skill that loads on its own; use the extension if
-your project already runs Spec Kit and you want the workflows as commands
-alongside your other `/speckit.*` ones. Installing both would register two
-skills covering the same ground, so pick one.
-
-## Usage
-
-Enter one of these prompts in your agent chat after installing the skill:
-
-```text
-Use catalogify to generate a knowledge catalog for this repo.
-Use catalogify to update knowledge/ for changes since its last logged commit.
-Use catalogify to clarify the open questions in knowledge/.
-Use catalogify to validate knowledge/.
-```
-
-These are prompts for your agent. For a terminal-only structure check, run
-`catalogify validate knowledge/`; to check repository-backed claims, run
-`catalogify verify knowledge/`.
-
-Output lands in `knowledge/` (configurable), ready to commit next to the code:
-
-```
-knowledge/
-├── index.md            # okf_version: "0.1" + directory of everything
-├── log.md              # dated history, each block records a commit SHA
-├── architecture/
-│   └── overview.md     # type: Reference — the "start here" concept
-├── services/…          # type: Service
-├── modules/…           # type: Module
-├── apis/…              # type: API Endpoint / API Resource
-├── data/…              # type: Data Model / Database Table
-└── operations/…        # type: Pipeline / Configuration / Playbook
-```
-
-On a monorepo, raise `OKF_INVENTORY_CAP` above its default of 150. Raw churn
-skews toward generated files and build config, so invest in the `exclude` list.
-
-The separate `okf.detail` setting defaults to `default`, which preserves
-existing output. Set it to `detailed` for deeper interfaces, dependencies,
-history, gotchas, open questions, and explanatory prose without changing
-concept coverage. In an agent prompt or Spec Kit command, an explicit request
-such as `detail: detailed` overrides the config for that run without editing
-it.
-
-## Configuration
-
-Everything works with no config. To change the bundle directory, resource URI
-base, excludes, type mappings, layout, detail mode, or the clarify question
-budget, copy the annotated template into your repo root:
-
-```bash
-cp ~/.claude/skills/catalogify/okf-config.template.yml .okf-config.yml
-```
-
-`catalogify inventory --config .okf-config.yml` and `catalogify validate <dir>
---config .okf-config.yml` honor its `exclude` list; the agent passes it through
-automatically once the file exists.
-
 ## Safety properties
 
 - **Never guesses.** Unverifiable facts become `open_questions`, resolved by the clarify workflow and marked with `<!-- clarified: ... -->` sentinels that later updates will not overwrite. Your answer outranks the machine's inference permanently.
@@ -496,7 +449,7 @@ automatically once the file exists.
 - **Never emits secrets.** Config values are described by shape, never value, including from history. The validator flags anything that slips through (W5).
 - **Never touches source code.** All writes stay inside the bundle directory.
 
-## Benchmark
+## Reproducing the benchmark
 
 To reproduce the table above:
 
@@ -516,13 +469,39 @@ cd ../..                               # back to the k8s repo root
 catalogify inventory                   # 2.1s, 56 KB of JSON
 catalogify history pkg/kubelet/cm --limit 3
 
-# then ask your agent to generate the catalog, and check it:
-catalogify validate knowledge/
+# then ask your agent to generate and validate the catalog
 ```
 
 Token counts are bytes ÷ 4. Measured against `kubernetes/kubernetes` at commit
 `d5ccf7968e5`. The structural graph was built AST-only (no API key), so its
 wiki lacks LLM community labels.
+
+## CLI reference: tools the agent calls
+
+The skill calls these analysis and checking commands while it works. They are
+listed here for inspection and automation; **to generate, update, or clarify a
+catalog, ask your agent**. Those three workflows are not CLI subcommands.
+`catalogify install` is the separate terminal command that copies the skill to
+your agents. Every CLI command accepts `--help`.
+
+```bash
+catalogify inventory                        # repo facts + git churn, as JSON
+catalogify history pkg/foo --limit 5        # the reverts and hotfixes behind a path
+catalogify cochange pkg/foo --depth 3       # what changes when this changes
+catalogify validate knowledge/              # OKF v0.1 §9 conformance (structure)
+catalogify verify knowledge/                # do its claims survive the repo?
+catalogify install [--list] [--uninstall]   # manage the agent skill
+```
+
+- **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, per-file commit churn, and any untracked subtrees found on disk so they can be named and skipped rather than mistaken for part of the project. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
+- **`history`** returns the creation commit, recent subjects, and the revert / hotfix / risk-flagged commits where invariants hide, each with the files it touched. A commit that changed only test files is marked `[TEST-ONLY]` so a "fix goroutine leak in foo_test.go" is never mistaken for a production invariant. Diff-free by default so historical secrets do not leak; `--patch` opts in.
+- **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. Two services can be coupled through a wire contract, a shared schema or a deployment ordering rule while sharing no import at all, and that relationship exists in no import graph, no call graph and no snapshot of the working tree. It shows up only in commits.
+- **`validate`** enforces OKF §9: four error classes, ten warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
+- **`verify`** is a check on *truth*, and it is the one that matters. Every commit the bundle cites must exist and must touch that concept's own `source_files`; a commit that changed only test files cannot back a production invariant; every symbol in an `# Interfaces` table must appear in non-test code; a `# Gotchas` section that cites nothing is an unsupported claim; and every `source_files` path must be tracked by git, so a vendored dependency or an imported project sitting in your working tree cannot be written up as if it were yours. Run it in CI and an agent can no longer quietly write a confident sentence with nothing behind it.
+
+Each is also installed under a bare `okf-` name (`okf-inventory`,
+`okf-history`, `okf-cochange`, `okf-validate`, `okf-verify`); the first two and
+`okf-validate` carry over from the package's previous life as `okf_skill`.
 
 ## Uninstall
 
