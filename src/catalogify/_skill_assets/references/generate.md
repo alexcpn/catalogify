@@ -334,9 +334,25 @@ an `open_questions` entry. Detailed mode must not create additional concepts;
 use `granularity` for that existing coverage decision.
 
 It returns the creation commit, commit count, recent subjects, and — most
-valuably — **revert/hotfix/risk-flagged commits** (reverts, hotfixes,
-regressions, races, deadlocks, leaks, corruption, security fixes). Those
-are your gotchas and invariants.
+valuably — **flagged commits**, each tagged with why it was flagged:
+
+- `risk`: the subject names a revert, hotfix, regression, race, deadlock,
+  leak, corruption or security fix.
+- `closes`: the full message closes an issue (`Fixes #842`,
+  `Closes org/repo#12`, a tracker `…/issues/N` URL). This catches bug fixes
+  whose subject says nothing alarming ("Handle empty polygon").
+- `fixes`: a `Fixes: <sha>` trailer names the commit that introduced the
+  bug. Read both: the pair shows what assumption broke.
+
+Each also carries `refs` (issue/PR numbers in the message) and a short
+excerpt of the message body, which is usually where the author wrote the
+rationale. Those are your gotchas and invariants.
+
+The excerpt is a lead, not the rule: read the full message before citing
+(below). Cite the **commit sha** as evidence; mention the issue alongside
+it as `#842` or `org/repo#12` — keep the `#` so it is never mistaken for a
+sha — e.g. "… (`c810f2b`, closes `#842`)". An issue number is not evidence
+on its own: the tracker is not checked, the commit is.
 
 Each flagged commit is listed with the files it touched, and a commit that
 changed **only test files** is marked `[TEST-ONLY]` (`"test_only": true`
