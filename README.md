@@ -34,8 +34,7 @@ catalogify install
 ```
 
 `uv tool install catalogify` uses the published PyPI version. **To test changes
-on `main` before a release**, including the new `detail` setting, install from
-GitHub instead:
+on `main` before a release**, install from GitHub instead:
 
 ```bash
 uv tool install --force git+https://github.com/alexcpn/catalogify
@@ -60,6 +59,31 @@ about facts the agent could not establish. Your answers become part of the
 catalog and survive later updates. You can skip a question and leave it open.
 After code changes, ask your agent to update the catalog. The catalogify skill
 handles the supporting terminal commands for you.
+
+**Tell it what the code doesn't say.** Before the first run, or at any point
+later, put a `GUIDANCE.md` in `knowledge/`. The agent reads it on every run and
+never edits it. The places where it helps most are things no scan can find, like
+a pipeline whose stages never import each other and only meet through a queue
+or a table:
+
+```markdown
+## Flows to trace
+- Orders: `api/orders.py` publishes to the `orders.created` topic,
+  `workers/fulfil.py` consumes it, and `jobs/settle.py` settles the batch
+  nightly. Write one Pipeline concept under operations/ that walks the stages
+  in order: what each one reads and writes, what triggers the next, and what
+  happens when a stage fails or runs twice.
+- Link each stage's own concept to that pipeline.
+- If retry or idempotency behaviour isn't clear from the code, leave it as an
+  open question.
+
+## Vocabulary
+- "Settlement" means the nightly batch, never a single payment.
+```
+
+If you add or change the file after the catalog exists, the next update checks
+every concept against it and fills in what's missing. More in
+[Steering a bundle](#steering-a-bundle).
 
 For deeper explanations, add `detail: detailed` to the generate or update
 prompt. This changes the depth of each concept without adding more concepts:
