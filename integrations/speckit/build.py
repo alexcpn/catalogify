@@ -150,7 +150,7 @@ FILE_RULES = {
         ("`catalogify inventory`", "the inventory script"),
         ("that `catalogify clarify` walks", "that `/speckit.okf.clarify` walks"),
         # Bundles record which form produced them.
-        ("generated_by: catalogify/0.9.0", "generated_by: speckit-okf/{version}"),
+        ("generated_by: catalogify/0.10.0", "generated_by: speckit-okf/{version}"),
         ("with catalogify. <N> concepts", "with speckit-okf. <N> concepts"),
     ],
     "update": [
@@ -270,6 +270,8 @@ def build(out):
     shutil.copy2(HERE / "commands" / "verify.md", out / "commands" / "verify.md")
     shutil.copy2(HERE / "README.md", out / "README.md")
     shutil.copy2(ROOT / "LICENSE", out / "LICENSE")
+    (out / "examples").mkdir()
+    shutil.copy2(ASSETS / "examples" / "GUIDANCE.md", out / "examples" / "GUIDANCE.md")
 
     for name in WORKFLOWS:
         text = (ASSETS / "references" / f"{name}.md").read_text()

@@ -55,9 +55,11 @@ except ImportError:
     HAVE_YAML = False
 
 RESERVED = {"index.md", "log.md"}
-# Not a concept: a bundle's human front door, since forges render README.md
-# when a directory is opened and ignore index.md. Matches validate_okf.py.
-IGNORED = {"README.md"}
+# Not concepts: a bundle's human front door, since forges render README.md
+# when a directory is opened and ignore index.md; agent instruction files for
+# agents that read the bundle; and the human-owned GUIDANCE.md, which may
+# quote commit-like hex that is not a claim. Matches validate_okf.py.
+IGNORED = {"README.md", "GUIDANCE.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"}
 # Backtick-quoted hex token: how generate.md tells the agent to cite a commit.
 SHA_TOKEN = re.compile(r"`([0-9a-f]{7,40})`")
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")

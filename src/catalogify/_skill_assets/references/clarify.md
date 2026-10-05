@@ -45,7 +45,9 @@ question in the bundle.
    what you'd write given a plausible answer. Make questions **specific and
    answerable** ("Is X a hard SLA or best-effort?"), never open-ended
    ("tell me about X"). Let the user answer some, skip others, or say
-   "don't know".
+   "don't know". If `$BUNDLE_DIR/GUIDANCE.md` exists, read it first: a
+   question may cite it as the reason it matters ("the guidance asks for
+   an owner on every Service").
 
 5. **Fold answers back in — surgically.** For each answered question:
    - Edit the concept body to state the now-verified fact in the right
@@ -87,6 +89,9 @@ question in the bundle.
 
    Fix any ERRORs, then summarize: N questions resolved, N skipped, N
    remaining (W8 count), and whether another clarify run is warranted.
+   If the answers suggest the guidance itself should change (a term it
+   should define, an area it should skip), propose the edit to
+   `GUIDANCE.md` in the report. Never apply it.
 
 ## Hard rules
 
@@ -100,3 +105,4 @@ question in the bundle.
 - Batch and budget questions; a clarify run that spams the user is worse
   than one that resolves the top few and defers the rest.
 - Never modify source code; all writes stay inside `BUNDLE_DIR`.
+- Never create or modify `GUIDANCE.md`; propose changes instead.

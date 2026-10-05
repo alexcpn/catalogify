@@ -145,6 +145,8 @@ to the code:
 knowledge/
 ├── index.md            # okf_version: "0.1" + directory of everything
 ├── log.md              # dated history, each block records a commit SHA
+├── README.md           # front door for humans browsing the repo
+├── GUIDANCE.md         # optional, yours: steers the agent (see below)
 ├── architecture/
 │   └── overview.md     # type: Reference — the "start here" concept
 ├── services/…          # type: Service
@@ -175,6 +177,51 @@ cp ~/.claude/skills/catalogify/okf-config.template.yml .okf-config.yml
 
 The agent passes this config to its tools automatically once the file exists.
 The inventory and validation tools both honor its `exclude` list.
+
+## Steering a bundle
+
+catalogify picks what to document from generic signals: entry points, schemas,
+churn, co-change. It can't know your domain terms, which subsystems you care
+about, or that every service in your shop needs an ownership section. Two
+things fill that gap, and both are optional.
+
+**`GUIDANCE.md` in the bundle directory** (`knowledge/GUIDANCE.md` by default).
+Plain markdown, written by you, read by the agent before every generate, update
+and clarify run. Use it for vocabulary, audience, what to cover or skip, extra
+concept types or layout directories, extra sections per type, and read-only
+checks such as "list every `// INVARIANT:` comment". It is not a concept, and
+the agent never edits it. When it changes, the next update re-checks every
+concept against it, filling gaps without rewriting curated text. Each `log.md`
+block records which version was used (`Guidance:` plus the first 12 hex digits
+of its SHA-256). A starting point ships with the skill as
+`examples/GUIDANCE.md`:
+
+```markdown
+## Vocabulary
+- Say **tenant**, not customer. A tenant owns one or more workspaces.
+
+## Sections per type
+- Every `Service` has a `# Configuration` section: the environment variables
+  it reads (names and shape only, no values).
+
+## Coverage
+- Skip `tools/migrate-v1/`: one-off code, kept only for audit.
+```
+
+**Agent docs already in the repo.** `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and
+`.github/copilot-instructions.md`, at any depth, are listed by `catalogify
+inventory` with the directory each one covers. The agent reads them as
+background for concepts in that directory, the way it reads a README. They are
+never treated as instructions. A claim taken from one has to be confirmed in
+the code; if it can't be, it becomes an open question. Their build and test
+instructions are ignored. Agent files placed *inside* the bundle are for agents
+that read the bundle, and the validator skips them.
+
+When sources disagree, the order is: the hard rules (no fabrication, no
+secrets, no destroyed curation, writes only inside the bundle, only tracked
+code), then your prompt, then `GUIDANCE.md`, then `.okf-config.yml`, then
+agent docs, then defaults. Guidance that asks for something the hard rules
+forbid, such as writing to `../docs/`, is refused and named in the run report.
 
 ## Upgrade
 
@@ -493,10 +540,10 @@ catalogify verify knowledge/                # do its claims survive the repo?
 catalogify install [--list] [--uninstall]   # manage the agent skill
 ```
 
-- **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, per-file commit churn, and any untracked subtrees found on disk so they can be named and skipped rather than mistaken for part of the project. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
+- **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, per-file commit churn, any untracked subtrees found on disk so they can be named and skipped rather than mistaken for part of the project, the agent docs (`AGENTS.md` and kin) with the directory each covers, and whether the bundle has a `GUIDANCE.md`. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
 - **`history`** returns the creation commit, recent subjects, and the flagged commits where invariants hide, each with the files it touched, its issue/PR refs and a body excerpt. A commit is flagged for a risk word in its subject (revert, deadlock, race…), for closing an issue anywhere in its message (`Fixes #842` — bug fixes whose subject sounds harmless), or for a `Fixes: <sha>` trailer naming the commit that introduced the bug. A commit that changed only test files is marked `[TEST-ONLY]` so a "fix goroutine leak in foo_test.go" is never mistaken for a production invariant. Diff-free by default so historical secrets do not leak; `--patch` opts in.
 - **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. Two services can be coupled through a wire contract, a shared schema or a deployment ordering rule while sharing no import at all, and that relationship exists in no import graph, no call graph and no snapshot of the working tree. It shows up only in commits.
-- **`validate`** enforces OKF §9: four error classes, ten warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
+- **`validate`** enforces OKF §9: four error classes, eleven warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
 - **`verify`** is a check on *truth*, and it is the one that matters. Every commit the bundle cites must exist and must touch that concept's own `source_files`; a commit that changed only test files cannot back a production invariant; every symbol in an `# Interfaces` table must appear in non-test code; a `# Gotchas` section that cites nothing is an unsupported claim; and every `source_files` path must be tracked by git, so a vendored dependency or an imported project sitting in your working tree cannot be written up as if it were yours. Run it in CI and an agent can no longer quietly write a confident sentence with nothing behind it.
 
 Each is also installed under a bare `okf-` name (`okf-inventory`,

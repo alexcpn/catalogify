@@ -3,6 +3,9 @@
 
 okf:
   # Where the knowledge bundle lives, relative to the repo root.
+  # A GUIDANCE.md at the root of this directory steers generate, update and
+  # clarify runs (vocabulary, coverage, extra sections). Humans own it; the
+  # agent reads it and never edits it. See examples/GUIDANCE.md.
   bundle_dir: "knowledge"
 
   # Declared OKF version, written into the bundle-root index.md frontmatter.

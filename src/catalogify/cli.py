@@ -16,7 +16,9 @@ Commands:
   inventory [out.json] [--config <cfg>]    Scan the repo into JSON: file tree,
                                            languages, entry points, manifests,
                                            API definitions, CI/CD, docs, ADRs,
-                                           plus git churn and recent commits.
+                                           plus git churn and recent commits,
+                                           agent docs (AGENTS.md, CLAUDE.md...)
+                                           and the bundle's GUIDANCE.md.
   history <path>... [--limit N] [--json]   Per-path git history: creation commit,
                                            recent subjects, and the flagged
                                            commits where invariants hide (risk

@@ -90,6 +90,41 @@ for g in globs:
 PYEOF
 }
 
+# Reads the scalar `okf.bundle_dir` from the config, same lenient parsing as
+# the exclude list. Prints the directory without quotes, comment, leading `./`
+# or trailing `/`; prints nothing when unset, so the caller falls back to the
+# default.
+config_bundle_dir() {
+  if [[ -z "$CONFIG" || ! -f "$CONFIG" ]]; then
+    return 0
+  fi
+  python3 - "$CONFIG" <<'PYEOF'
+import re, sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        lines = f.readlines()
+except OSError:
+    sys.exit(0)
+
+for line in lines:
+    m = re.match(r"^\s*bundle_dir\s*:\s*(.*)$", line)
+    if not m:
+        continue
+    value = m.group(1).strip()
+    q = re.match(r"""^(["'])(.*?)\1""", value)
+    value = q.group(2) if q else value.split("#", 1)[0].strip()
+    while value.startswith("./"):
+        value = value[2:]
+    value = value.rstrip("/")
+    print(value or ".")
+    break
+PYEOF
+}
+
+BUNDLE_DIR="$(config_bundle_dir || true)"
+BUNDLE_DIR="${BUNDLE_DIR:-knowledge}"
+
 EXCLUDE_FRAGMENTS="$(config_exclude_regex || true)"
 if [[ -n "$EXCLUDE_FRAGMENTS" ]]; then
   CONFIG_EXCLUDE_RE="$(printf '%s\n' "$EXCLUDE_FRAGMENTS" | paste -sd '|' -)"
@@ -237,6 +272,27 @@ DOCS_RAW="$(raw_count "$DOCS_RE")"
 CONFIGS_RAW="$(raw_count "$CONFIGS_RE")"
 ADR_DOCS_RAW="$(raw_count "$ADR_RE")"
 
+# Agent instruction files (AGENTS.md and kin): background on the subsystem
+# they sit in, read like a README. Never instructions to catalogify. Files
+# inside the bundle are for agents that *consume* the bundle, so they are not
+# context for building it — except when the bundle is the repository root,
+# where that would drop every one of them.
+AGENT_DOCS_RE='(^|/)(AGENTS|CLAUDE|GEMINI)\.md$|(^|/)\.github/copilot-instructions\.md$'
+outside_bundle() {
+  if [[ "$BUNDLE_DIR" == "." ]]; then cat; return; fi
+  awk -v p="$BUNDLE_DIR/" 'index($0, p) != 1'
+}
+AGENT_DOCS_ALL="$(list_matching "$AGENT_DOCS_RE" | outside_bundle)"
+AGENT_DOCS="$(printf '%s\n' "$AGENT_DOCS_ALL" | sed '/^$/d' | take "$CAP")"
+AGENT_DOCS_RAW="$(printf '%s\n' "$AGENT_DOCS_ALL" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+# The bundle's human-owned steering file. Reported whether or not git tracks
+# it: a bundle that has not been committed yet can still be steered.
+GUIDANCE_TRACKED=False
+if git ls-files --error-unmatch -- "$BUNDLE_DIR/GUIDANCE.md" >/dev/null 2>&1; then
+  GUIDANCE_TRACKED=True
+fi
+
 # Top-level directory sizes (proxy for module significance)
 TOPDIRS="$(printf '%s\n' "$ALL_FILES" | sed '/^$/d' | awk -F/ 'NF>1 {print $1}' | sort | uniq -c | sort -rn | take 20 | awk '{printf "%s:%s\n", $2, $1}')"
 
@@ -297,6 +353,57 @@ def recent_list(raw):
 
 churn = churn_list("""$CHURN""")
 
+# Must match IGNORED in validate_okf.py: files in a bundle that are not
+# concepts. GUIDANCE.md only counts at the bundle root, but a nested one is
+# skipped (W10), so it is never a concept either.
+NON_CONCEPT = {"README.md", "GUIDANCE.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"}
+RESERVED = {"index.md", "log.md"}
+
+def agent_doc(path):
+    parts = path.split("/")
+    if parts[-2:] == [".github", "copilot-instructions.md"]:
+        parts = parts[:-2]   # scoped to the directory that holds .github/
+    else:
+        parts = parts[:-1]
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        size = None
+    return {"path": path, "scope": "/".join(parts) or ".", "bytes": size}
+
+agent_items = lines("""$AGENT_DOCS""")
+agent_docs = {
+    "items": [agent_doc(p) for p in agent_items],
+    "truncated": int("$AGENT_DOCS_RAW" or 0) > len(agent_items),
+}
+
+bundle_dir = """$BUNDLE_DIR"""
+guidance_path = "GUIDANCE.md" if bundle_dir == "." else bundle_dir + "/GUIDANCE.md"
+guidance = {"path": guidance_path, "exists": os.path.isfile(guidance_path),
+            "tracked": None, "sha256": None, "bytes": None}
+if guidance["exists"]:
+    import hashlib
+    with open(guidance_path, "rb") as f:
+        data = f.read()
+    guidance.update(tracked=$GUIDANCE_TRACKED,
+                    sha256=hashlib.sha256(data).hexdigest(), bytes=len(data))
+
+concept_files = 0
+non_concept = []
+if os.path.isdir(bundle_dir):
+    for dirpath, dirnames, filenames in os.walk(bundle_dir):
+        dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+        for name in filenames:
+            if not name.endswith(".md"):
+                continue
+            rel = os.path.relpath(os.path.join(dirpath, name), bundle_dir)
+            if name in NON_CONCEPT:
+                non_concept.append(rel)
+            elif name not in RESERVED:
+                concept_files += 1
+bundle = {"dir": bundle_dir, "exists": os.path.isdir(bundle_dir),
+          "concept_files": concept_files, "non_concept_files": sorted(non_concept)}
+
 inv = {
   "root": os.getcwd(),
   "git": {
@@ -321,6 +428,10 @@ inv = {
   "top_level_dirs": dict(x.split(":") for x in lines("""$TOPDIRS""")),
   **{k: v["items"] for k, v in categories.items()},
   "truncated": {k: v["truncated"] for k, v in categories.items() if v["truncated"]},
+  # Context only: read the nearest one when writing a concept under its scope.
+  "agent_docs": agent_docs,
+  "guidance": guidance,
+  "bundle": bundle,
 }
 with open(sys.argv[1], "w") as f:
     json.dump(inv, f, indent=2)
@@ -343,4 +454,7 @@ for k in ("dependency_manifests","entrypoints","api_definitions","route_like_fil
           "data_layer_files","ops_files","docs","config_files","adr_docs"):
     flag = " (truncated)" if k in inv["truncated"] else ""
     print(f"  {k}: {len(inv[k])}{flag}")
+flag = " (truncated)" if agent_docs["truncated"] else ""
+print(f"  agent docs: {len(agent_docs['items'])}{flag}")
+print(f"  guidance: {guidance_path if guidance['exists'] else 'none'}")
 PYEOF
