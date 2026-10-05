@@ -34,8 +34,7 @@ catalogify install
 ```
 
 `uv tool install catalogify` uses the published PyPI version. **To test changes
-on `main` before a release**, including the new `detail` setting, install from
-GitHub instead:
+on `main` before a release**, install from GitHub instead:
 
 ```bash
 uv tool install --force git+https://github.com/alexcpn/catalogify
@@ -60,6 +59,15 @@ about facts the agent could not establish. Your answers become part of the
 catalog and survive later updates. You can skip a question and leave it open.
 After code changes, ask your agent to update the catalog. The catalogify skill
 handles the supporting terminal commands for you.
+
+**Tell it what the code doesn't say.** Before the first run, or at any point
+later, put a `GUIDANCE.md` in `knowledge/`. The agent reads it on every run and
+never edits it. It helps most with things no scan can find, such as a pipeline
+whose stages never import each other and only meet through a queue or a table.
+Name the stages in order and ask for one Pipeline concept that walks them. If
+you add or change the file after the catalog exists, the next update checks
+every concept against it and fills in what's missing. More in
+[Steering a bundle](#steering-a-bundle).
 
 For deeper explanations, add `detail: detailed` to the generate or update
 prompt. This changes the depth of each concept without adding more concepts:
