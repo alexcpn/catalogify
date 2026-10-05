@@ -18,10 +18,12 @@ Commands:
                                            API definitions, CI/CD, docs, ADRs,
                                            plus git churn and recent commits.
   history <path>... [--limit N] [--json]   Per-path git history: creation commit,
-                                           recent subjects, and the revert /
-                                           hotfix / risk-flagged commits where
-                                           invariants hide, with the files each
-                                           touched; test-only commits are marked
+                                           recent subjects, and the flagged
+                                           commits where invariants hide (risk
+                                           words, issue-closing messages,
+                                           Fixes: trailers), with refs, a body
+                                           excerpt and the files each touched;
+                                           test-only commits are marked
                                            [TEST-ONLY]. Add --patch for diffs
                                            (careful: can surface old secrets).
   cochange [<path>...] [--depth N]         Directories that change together in

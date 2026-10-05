@@ -99,7 +99,7 @@ human-confirmed material and report the conflict.
      unless the underlying code genuinely contradicts it — in which case
      flag the conflict as a new `open_questions` entry rather than silently
      rewriting it.
-   - Use `catalogify history <path>` on the changed files to ground *why* they changed (revert/hotfix signals) so
+   - Use `catalogify history <path>` on the changed files to ground *why* they changed (risk, issue-closing and `Fixes:` signals) so
      refreshed sections keep the "why", not just the "what". Re-run
      `catalogify cochange <path>` too: a coupling that has appeared or
      disappeared since the last update is a real change to the concept's
