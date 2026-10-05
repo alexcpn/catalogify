@@ -9,6 +9,7 @@ The bash scripts need `bash` and `git`. On Windows both ship with Git for
 Windows, so we look for its `bash.exe` when `bash` is not already on PATH.
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -16,26 +17,57 @@ from contextlib import ExitStack
 from importlib.resources import as_file, files
 from pathlib import Path
 
-# Git for Windows installs bash here; checked only when PATH has no bash.
+# Git for Windows installs bash in one of these when git's own location does
+# not give it away.
 _WINDOWS_BASH_CANDIDATES = (
     r"C:\Program Files\Git\bin\bash.exe",
     r"C:\Program Files (x86)\Git\bin\bash.exe",
     os.path.expandvars(r"%LOCALAPPDATA%\Programs\Git\bin\bash.exe"),
 )
 
+# C:\Windows\System32\bash.exe and the WindowsApps alias are WSL launchers, not
+# a bash. With no Linux distribution installed they fail with
+# "execvpe(/bin/bash) failed"; with one, the script runs inside WSL against a
+# different git and python. They usually come first on PATH.
+_WSL_LAUNCHER = re.compile(r"[\\/](system32|windowsapps)[\\/]", re.I)
 
-def _find_bash() -> str:
-    found = shutil.which("bash")
-    if found:
-        return found
-    for candidate in _WINDOWS_BASH_CANDIDATES:
+
+def _git_for_windows_bash():
+    """<Git for Windows root>/bin/bash.exe, found from where git.exe is.
+
+    git.exe lives in <root>/cmd, <root>/bin or <root>/mingw64/bin, so the root
+    is one of its first three ancestors.
+    """
+    git = shutil.which("git")
+    if not git:
+        return None
+    for root in list(Path(git).resolve().parents)[:3]:
+        candidate = root / "bin" / "bash.exe"
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _find_windows_bash():
+    for candidate in (_git_for_windows_bash(), *_WINDOWS_BASH_CANDIDATES):
         if candidate and Path(candidate).is_file():
             return candidate
+    found = shutil.which("bash")
+    if found and not _WSL_LAUNCHER.search(found):
+        return found
+    return None
+
+
+def _find_bash() -> str:
+    found = _find_windows_bash() if os.name == "nt" else shutil.which("bash")
+    if found:
+        return found
     sys.exit(
-        "okf: `bash` was not found on PATH.\n"
+        "okf: no usable `bash` was found.\n"
         "The inventory and history tools are bash scripts that shell out to git.\n"
         "On Windows, install Git for Windows (https://git-scm.com/download/win),\n"
-        "which provides both git and bash."
+        "which provides both git and bash. The bash.exe in System32 is a WSL\n"
+        "launcher and is not used."
     )
 
 
