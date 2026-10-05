@@ -16,7 +16,10 @@ ERRORS (bundle is non-conformant):
       the line is present but is neither a valid hex commit SHA nor the
       literal `none`. This is an ERROR because the update workflow depends
       on it to resume. Skipped entirely outside a git repository, where
-      there is no commit to record.
+      there is no commit to record. A block may carry one optional
+      `Guidance: \`<12 hex>\`` line (the SHA-256 prefix of the GUIDANCE.md
+      the run followed), and only on the line directly after `Commit:`;
+      a misplaced, malformed or repeated one is also E4.
 
 WARNINGS (consumers must tolerate; reported for quality):
   W0  PyYAML not installed — using the lenient fallback parser.
@@ -30,9 +33,14 @@ WARNINGS (consumers must tolerate; reported for quality):
   W7  Possible duplicate concept: another file shares the same
       `type` + `title`.
   W8  Concept has unresolved `open_questions` (run the clarify workflow).
-  Note: `README.md` anywhere in the bundle is ignored, not treated as a
-  concept. OKF navigates by `index.md`, but forges render `README.md` when a
-  directory is opened, so a bundle needs one to have a front door.
+  W10 `GUIDANCE.md` below the bundle root. Only the root one steers runs,
+      so a nested one is skipped rather than checked as a concept.
+  Note: `README.md`, `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` anywhere in
+  the bundle, and `GUIDANCE.md` at its root, are ignored, not treated as
+  concepts. OKF navigates by `index.md`, but forges render `README.md` when
+  a directory is opened, so a bundle needs one to have a front door. Agent
+  instruction files are legitimate guidance for agents that consume the
+  bundle, and `GUIDANCE.md` is the human-owned file that steers catalogify.
 
   W9  Bundle-relative links (`](/path.md)`) in a bundle that is NOT at the
       repository root. OKF §6.1 resolves a leading `/` against the bundle
@@ -71,11 +79,17 @@ RESERVED = {"index.md", "log.md"}
 # you open a directory and ignore index.md entirely — so a bundle without one
 # presents a bare file list to the humans it was written for. Treated as a
 # non-concept so a bundle can have a front door and stay conformant.
-IGNORED = {"README.md"}
+# Agent instruction files are guidance for agents that read the bundle, and
+# GUIDANCE.md (bundle root only, W10 elsewhere) steers the agent that writes it.
+# None of them is a concept. Keep in step with okf-inventory.sh and verify_okf.py.
+IGNORED = {"README.md", "GUIDANCE.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"}
+GUIDANCE = "GUIDANCE.md"
 DATE_HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
 # A commit SHA, or the literal `none` for bundles generated outside a git
 # repository, where there is no commit to record.
 COMMIT_LINE = re.compile(r"^Commit:\s+`([0-9a-fA-F]{7,40}|none)`\s*$", re.I)
+# The first 12 hex digits of the SHA-256 of the GUIDANCE.md a run followed.
+GUIDANCE_LINE = re.compile(r"^Guidance:\s+`[0-9a-fA-F]{12}`\s*$")
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 SECRET_PATTERNS = [
     # key: "value" / key = 'value' (quoted)
@@ -251,15 +265,30 @@ def check_log(path: str, rel: str, require_commit: bool = True):
             continue
         # Look for a "Commit: `<sha>`" line before the next date heading.
         found_sha = None
+        commit_at = None
+        guidance_at = []
         for j in range(i + 1, len(lines)):
             if lines[j].startswith("## "):
                 break
-            m = COMMIT_LINE.match(lines[j].strip())
-            if m:
-                found_sha = m.group(1)
-                break
+            line = lines[j].strip()
+            if line.startswith("Guidance:"):
+                guidance_at.append(j)
+            if found_sha is None:
+                m = COMMIT_LINE.match(line)
+                if m:
+                    found_sha = m.group(1)
+                    commit_at = j
         if found_sha is None and require_commit:
             errors.append(f"E4 {rel}: date block '{stripped}' missing required 'Commit: `<sha>`' line")
+        if not require_commit or not guidance_at:
+            continue
+        if len(guidance_at) > 1:
+            errors.append(f"E4 {rel}: date block '{stripped}' has {len(guidance_at)} 'Guidance:' lines; at most one is allowed")
+        elif commit_at is not None and guidance_at[0] != commit_at + 1:
+            errors.append(f"E4 {rel}: date block '{stripped}' has a 'Guidance:' line that is not directly after 'Commit:'")
+        elif not GUIDANCE_LINE.match(lines[guidance_at[0]].strip()):
+            errors.append(f"E4 {rel}: date block '{stripped}' has a malformed 'Guidance:' line "
+                          f"(expected 'Guidance: `<first 12 hex of sha256>`')")
 
 
 def find_repo_root(bundle: str) -> str:
@@ -338,6 +367,9 @@ def main() -> int:
     for dirpath, dirnames, filenames in os.walk(bundle):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         rel_dir = os.path.relpath(dirpath, bundle)
+        if dirpath != bundle and GUIDANCE in filenames:
+            warnings.append(f"W10 {os.path.join(rel_dir, GUIDANCE)}: GUIDANCE.md is only read "
+                            f"at the bundle root, not here")
         mds = [
             f for f in filenames
             if f.endswith(".md") and f not in IGNORED and not is_excluded(

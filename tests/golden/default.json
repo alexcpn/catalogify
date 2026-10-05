@@ -1,0 +1,124 @@
+{
+  "inventory_json": {
+    "adr_docs": [],
+    "api_definitions": [],
+    "cap": 150,
+    "config_files": [],
+    "data_layer_files": [
+      "app/models.py"
+    ],
+    "dependency_manifests": [],
+    "docs": [
+      "README.md",
+      "knowledge/README.md"
+    ],
+    "entrypoints": [
+      "app/main.py"
+    ],
+    "file_count": 10,
+    "git": {
+      "branch": "main",
+      "head": "079ca7e",
+      "history": {
+        "churn": [
+          {
+            "commits": 2,
+            "file": "app/main.py"
+          },
+          {
+            "commits": 1,
+            "file": "README.md"
+          },
+          {
+            "commits": 1,
+            "file": "knowledge/README.md"
+          },
+          {
+            "commits": 1,
+            "file": "knowledge/modules/index.md"
+          },
+          {
+            "commits": 1,
+            "file": "knowledge/modules/app.md"
+          },
+          {
+            "commits": 1,
+            "file": "knowledge/log.md"
+          },
+          {
+            "commits": 1,
+            "file": "knowledge/index.md"
+          },
+          {
+            "commits": 1,
+            "file": "Dockerfile"
+          },
+          {
+            "commits": 1,
+            "file": "app/models.py"
+          },
+          {
+            "commits": 1,
+            "file": "app/__init__.py"
+          }
+        ],
+        "churn_truncated": false,
+        "commits_scanned": 3,
+        "recent_commits": [
+          {
+            "date": "2026-01-03T12:00:00+00:00",
+            "sha": "079ca7e",
+            "subject": "Add knowledge bundle"
+          },
+          {
+            "date": "2026-01-02T12:00:00+00:00",
+            "sha": "15f43e1",
+            "subject": "Fix race in serve when two listeners start"
+          },
+          {
+            "date": "2026-01-01T12:00:00+00:00",
+            "sha": "4322654",
+            "subject": "Add service skeleton"
+          }
+        ]
+      },
+      "is_git_repo": true,
+      "remote": "",
+      "untracked_dirs": []
+    },
+    "language_histogram": {
+      "md": "6",
+      "py": "3"
+    },
+    "ops_files": [
+      "Dockerfile"
+    ],
+    "route_like_files": [],
+    "top_level_dirs": {
+      "app": "3",
+      "knowledge": "5"
+    },
+    "truncated": {}
+  },
+  "inventory_text": "Inventory written to <OUT>\n  files: 10  head: 079ca7e  branch: main\n  git history: 3 commits scanned, 10 hot files, 3 recent subjects\n  dependency_manifests: 0\n  entrypoints: 1\n  api_definitions: 0\n  route_like_files: 0\n  data_layer_files: 1\n  ops_files: 1\n  docs: 2\n  config_files: 0\n  adr_docs: 0",
+  "validate": {
+    "code": 0,
+    "stderr": "",
+    "stdout": "OKF validation of <REPO>/knowledge\n  concepts: 1  errors: 0  warnings: 0\n\n\nRESULT: CONFORMANT (OKF v0.1)\n"
+  },
+  "validate_json": {
+    "code": 0,
+    "stderr": "",
+    "stdout": "{\n  \"concepts\": 1,\n  \"errors\": [],\n  \"warnings\": [],\n  \"result\": \"CONFORMANT\"\n}\n"
+  },
+  "verify": {
+    "code": 0,
+    "stderr": "",
+    "stdout": "OKF claim verification of <REPO>/knowledge\n  concepts: 1  findings: 0  notes: 0\n\n  every cited commit, symbol and dependency resolves.\n\n\nRESULT: VERIFIED\n"
+  },
+  "verify_json": {
+    "code": 0,
+    "stderr": "",
+    "stdout": "{\n  \"concepts\": 1,\n  \"findings\": [],\n  \"notes\": [],\n  \"result\": \"VERIFIED\"\n}\n"
+  }
+}
