@@ -79,7 +79,7 @@ Install the published extension after choosing your Spec Kit agent integration:
 
 ```bash
 specify extension add okf --from \
-  https://github.com/alexcpn/catalogify/releases/download/v0.9.2/speckit-okf-0.9.2.zip
+  https://github.com/alexcpn/catalogify/releases/download/v0.10.1/speckit-okf-0.10.1.zip
 ```
 
 **To test changes on `main` before a release**, build and install the extension
