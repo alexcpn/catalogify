@@ -358,6 +358,18 @@ churn = churn_list("""$CHURN""")
 # skipped (W10), so it is never a concept either.
 NON_CONCEPT = {"README.md", "GUIDANCE.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"}
 RESERVED = {"index.md", "log.md"}
+# Case variants (guidance.md) are skipped by the validator with a "rename it"
+# warning, so they are not concepts here either. Only the exact name is read.
+NON_CONCEPT_LOWER = {n.lower() for n in NON_CONCEPT}
+
+def listing(d):
+    """Names in d exactly as stored. os.path.isfile ignores case on Windows
+    and macOS, which would accept guidance.md for GUIDANCE.md there and not
+    on Linux."""
+    try:
+        return set(os.listdir(d))
+    except OSError:
+        return set()
 
 def agent_doc(path):
     parts = path.split("/")
@@ -379,8 +391,12 @@ agent_docs = {
 
 bundle_dir = """$BUNDLE_DIR"""
 guidance_path = "GUIDANCE.md" if bundle_dir == "." else bundle_dir + "/GUIDANCE.md"
-guidance = {"path": guidance_path, "exists": os.path.isfile(guidance_path),
+root_names = listing(bundle_dir)
+guidance = {"path": guidance_path,
+            "exists": "GUIDANCE.md" in root_names and os.path.isfile(guidance_path),
             "tracked": None, "sha256": None, "bytes": None}
+guidance_variant = next((n for n in sorted(root_names)
+                         if n.lower() == "guidance.md" and n != "GUIDANCE.md"), None)
 if guidance["exists"]:
     import hashlib
     with open(guidance_path, "rb") as f:
@@ -397,7 +413,7 @@ if os.path.isdir(bundle_dir):
             if not name.endswith(".md"):
                 continue
             rel = os.path.relpath(os.path.join(dirpath, name), bundle_dir)
-            if name in NON_CONCEPT:
+            if name.lower() in NON_CONCEPT_LOWER:
                 non_concept.append(rel)
             elif name not in RESERVED:
                 concept_files += 1
@@ -457,4 +473,7 @@ for k in ("dependency_manifests","entrypoints","api_definitions","route_like_fil
 flag = " (truncated)" if agent_docs["truncated"] else ""
 print(f"  agent docs: {len(agent_docs['items'])}{flag}")
 print(f"  guidance: {guidance_path if guidance['exists'] else 'none'}")
+if guidance_variant:
+    print(f"  ! {guidance_variant} is not read: the name is case-sensitive, "
+          f"rename it to GUIDANCE.md")
 PYEOF

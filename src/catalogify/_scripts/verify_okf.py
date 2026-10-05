@@ -60,6 +60,9 @@ RESERVED = {"index.md", "log.md"}
 # agents that read the bundle; and the human-owned GUIDANCE.md, which may
 # quote commit-like hex that is not a claim. Matches validate_okf.py.
 IGNORED = {"README.md", "GUIDANCE.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"}
+# Case variants too (guidance.md): validate_okf.py warns about them (W11) and
+# skips them, so they are not concepts to verify either.
+IGNORED_LOWER = {n.lower() for n in IGNORED}
 # Backtick-quoted hex token: how generate.md tells the agent to cite a commit.
 SHA_TOKEN = re.compile(r"`([0-9a-f]{7,40})`")
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
@@ -496,7 +499,7 @@ def main():
     for dirpath, dirnames, filenames in os.walk(bundle):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for f in filenames:
-            if not f.endswith(".md") or f in RESERVED or f in IGNORED:
+            if not f.endswith(".md") or f in RESERVED or f.lower() in IGNORED_LOWER:
                 continue
             path = os.path.join(dirpath, f)
             rel = os.path.relpath(path, bundle)

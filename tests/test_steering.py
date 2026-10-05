@@ -226,9 +226,61 @@ def test_t6_malformed_guidance(tmp_path):
     assert any("malformed" in e for e in errs)
 
 
-def test_t6_guidance_ignored_outside_git(tmp_path):
+def _plain_log(tmp_path, block):
     b = tmp_path / "plain" / "knowledge"
     b.mkdir(parents=True)
     (b / "index.md").write_text('---\nokf_version: "0.1"\n---\n# Index\n')
-    (b / "log.md").write_text("# Log\n\n## 2026-10-05\nCommit: `none`\nGuidance: `9f86d081884c`\n")
-    assert validate_json(b)["result"] == "CONFORMANT"
+    (b / "log.md").write_text("# Log\n\n## 2026-10-05\n" + block)
+    return validate_json(b)
+
+
+def test_t6_guidance_outside_git_ok(tmp_path):
+    res = _plain_log(tmp_path, "Commit: `none`\nGuidance: `9f86d081884c`\n")
+    assert res["result"] == "CONFORMANT", res
+
+
+@pytest.mark.parametrize("block,why", [
+    ("Commit: `none`\nGuidance: `9f86`\n", "malformed"),
+    ("Guidance: `9f86d081884c`\nCommit: `none`\n", "not directly after"),
+    ("Commit: `none`\nGuidance: `9f86d081884c`\nGuidance: `9f86d081884c`\n", "at most one"),
+])
+def test_t6_guidance_checked_outside_git(tmp_path, block, why):
+    errs = _e4(_plain_log(tmp_path, block))
+    assert any(why in e for e in errs), errs
+
+
+def test_t6_no_commit_line_still_optional_outside_git(tmp_path):
+    assert _plain_log(tmp_path, "* **Initialization**: x\n")["result"] == "CONFORMANT"
+
+
+# --- Filename case ------------------------------------------------------------
+
+def test_inventory_guidance_name_is_case_exact(tmp_path):
+    r = build_sample(tmp_path / "repo")
+    r.write("knowledge/guidance.md", "lower-case\n")
+    data, text = inventory(r.root, tmp_path / "inv.json")
+    assert data["guidance"]["exists"] is False
+    assert data["bundle"]["concept_files"] == 1          # not counted as a concept
+    assert "guidance.md" in data["bundle"]["non_concept_files"]
+    assert "rename it to GUIDANCE.md" in text
+
+
+def test_validator_warns_on_case_variant(tmp_path):
+    r = build_sample(tmp_path / "repo")
+    b = r.root / "knowledge"
+    (b / "guidance.md").write_text("# lower-case guidance, no frontmatter\n")
+    (b / "modules" / "Agents.md").write_text("# for agents\n")
+    res = validate_json(b)
+    assert res["result"] == "CONFORMANT", res
+    assert res["concepts"] == 1
+    assert any(w.startswith("W11 guidance.md: rename guidance.md to GUIDANCE.md") for w in res["warnings"])
+    assert any(w.startswith("W11 modules/Agents.md: rename Agents.md to AGENTS.md") for w in res["warnings"])
+
+
+def test_verify_skips_case_variant(tmp_path):
+    r = build_sample(tmp_path / "repo")
+    b = r.root / "knowledge"
+    (b / "guidance.md").write_text("Index the marker `deadbeef12`.\n")
+    code, out, _ = verify(b, json_out=True)
+    res = json.loads(out)
+    assert code == 0 and res["concepts"] == 1 and res["findings"] == []

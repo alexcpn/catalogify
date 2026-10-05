@@ -15,11 +15,12 @@ ERRORS (bundle is non-conformant):
   E4  log.md date block missing a required `Commit: \\`<sha>\\`` line, or
       the line is present but is neither a valid hex commit SHA nor the
       literal `none`. This is an ERROR because the update workflow depends
-      on it to resume. Skipped entirely outside a git repository, where
-      there is no commit to record. A block may carry one optional
-      `Guidance: \`<12 hex>\`` line (the SHA-256 prefix of the GUIDANCE.md
-      the run followed), and only on the line directly after `Commit:`;
-      a misplaced, malformed or repeated one is also E4.
+      on it to resume. The missing-`Commit:` check is skipped outside a
+      git repository, where there is no commit to record. A block may
+      carry one optional `Guidance: \`<12 hex>\`` line (the SHA-256
+      prefix of the GUIDANCE.md the run followed), directly after
+      `Commit:` when there is one; a misplaced, malformed or repeated one
+      is also E4, with or without git.
 
 WARNINGS (consumers must tolerate; reported for quality):
   W0  PyYAML not installed — using the lenient fallback parser.
@@ -35,6 +36,10 @@ WARNINGS (consumers must tolerate; reported for quality):
   W8  Concept has unresolved `open_questions` (run the clarify workflow).
   W10 `GUIDANCE.md` below the bundle root. Only the root one steers runs,
       so a nested one is skipped rather than checked as a concept.
+  W11 A case variant of a non-concept name (`guidance.md`, `Agents.md`).
+      The names are case-sensitive: catalogify would not read the file as
+      GUIDANCE.md on Linux, even where the filesystem ignores case. It is
+      skipped, not checked as a concept, and should be renamed.
   Note: `README.md`, `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` anywhere in
   the bundle, and `GUIDANCE.md` at its root, are ignored, not treated as
   concepts. OKF navigates by `index.md`, but forges render `README.md` when
@@ -84,6 +89,8 @@ RESERVED = {"index.md", "log.md"}
 # None of them is a concept. Keep in step with okf-inventory.sh and verify_okf.py.
 IGNORED = {"README.md", "GUIDANCE.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"}
 GUIDANCE = "GUIDANCE.md"
+# lowercased name -> the exact name it should have (W11).
+IGNORED_BY_LOWER = {n.lower(): n for n in IGNORED}
 DATE_HEADING = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
 # A commit SHA, or the literal `none` for bundles generated outside a git
 # repository, where there is no commit to record.
@@ -280,7 +287,8 @@ def check_log(path: str, rel: str, require_commit: bool = True):
                     commit_at = j
         if found_sha is None and require_commit:
             errors.append(f"E4 {rel}: date block '{stripped}' missing required 'Commit: `<sha>`' line")
-        if not require_commit or not guidance_at:
+        # Guidance: is a format check, so it applies with or without git.
+        if not guidance_at:
             continue
         if len(guidance_at) > 1:
             errors.append(f"E4 {rel}: date block '{stripped}' has {len(guidance_at)} 'Guidance:' lines; at most one is allowed")
@@ -370,9 +378,15 @@ def main() -> int:
         if dirpath != bundle and GUIDANCE in filenames:
             warnings.append(f"W10 {os.path.join(rel_dir, GUIDANCE)}: GUIDANCE.md is only read "
                             f"at the bundle root, not here")
+        for f in sorted(filenames):
+            expected = IGNORED_BY_LOWER.get(f.lower())
+            if expected and f != expected:
+                warnings.append(f"W11 {os.path.join(rel_dir, f) if rel_dir != '.' else f}: "
+                                f"rename {f} to {expected} (names are case-sensitive; "
+                                f"skipped, not checked as a concept)")
         mds = [
             f for f in filenames
-            if f.endswith(".md") and f not in IGNORED and not is_excluded(
+            if f.endswith(".md") and f.lower() not in IGNORED_BY_LOWER and not is_excluded(
                 os.path.relpath(os.path.join(dirpath, f), bundle), exclude_patterns
             )
         ]
