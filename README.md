@@ -1,36 +1,118 @@
 # catalogify
 
-**A portable codebase knowledge base, grounded in git history and maintained alongside the code.**
+**A codebase knowledge base the agent can actually afford to read — grounded in git, held to a commit.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Before an agent changes an unfamiliar system, it needs to know which services
-own the behavior, how they fit together, and what constraints matter.
-`catalogify` builds that overview as an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
-(OKF v0.1)
-bundle: linked Markdown files describing architecture, services, modules,
-APIs, data models and operations.
+`catalogify` turns a repository into an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
+(OKF v0.1) bundle: linked Markdown concepts covering architecture, services,
+modules, APIs, data models and operations. Your existing coding agent reads the
+evidence and writes the catalog; the CLI only collects facts and checks claims.
 
-- **Small enough to use.** Capture the system's structure and important
-  relationships. Let the agent investigate implementation details with
-  `rg`, `git grep` and its other code tools when a task needs them.
-- **Held to a commit.** `log.md` records the repository commit covered by
-  the last update. The agent uses that checkpoint and each concept's source
-  paths to identify what needs refreshing as code changes.
-- **Lessons from history.** Mine fixes, reverts and commit messages for
-  past failures and constraints that the current code may not explain.
-- **Evidence checked by code.** Deterministic checks catch invalid or
-  unrelated commit citations, test-only evidence for production gotchas,
-  missing interface names and untracked sources.
+- [QuickStart:Install Skill and Use](#quickstart-agent-skill)
+- [The Four ideas](#the-four-ideas)
+- [Recorded examples](#worked-examples)
 
-The CLI collects bounded facts and runs checks; your existing coding agent
-reads the evidence and writes the catalog. It installs as an **Agent Skill**
-for compatible harnesses, including Claude Code, Cursor and Codex. A
-[Spec Kit extension](#spec-kit-extension) provides the same workflows.
+## Why this exists
 
-[Install the skill](#quickstart-agent-skill) ·
-[How it works](#how-the-knowledge-base-stays-useful) ·
-[Recorded examples](#worked-examples)
+Agents stall on unfamiliar code. They need a map before they can navigate: who
+owns the behavior, how the pieces fit, what already broke once. Full-repo
+context dumps don't solve this — they drown the model. Hand-written wikis do,
+just on a delay: they rot the moment someone merges.
+
+`catalogify` takes the middle path. Capture the system-level structure once,
+keep it cheap to refresh, and make every claim checkable.
+
+## The four ideas
+
+### 1. Architecture without the deep dive
+
+The catalog describes high level architecture, service boundaries, key interfaces,
+data and dependencies — enough for the agent to decide where to look, not
+enough to replace the source. Deep source scan is left to harness's efficient
+tools like [ripgrep](https://github.com/burntsushi/ripgrep), git grep, and AST parsers
+like [Graphify](https://github.com/Graphify-Labs/graphify)
+
+This matters on large repos and monorepos with hundreds of microservices. Bounded inventories
+and history keeps the context size manageable. Full source scans, AST parse trees and the like
+exhausts even the largest context sizes.
+
+In a recorded Apache Airflow run, **1.8 million lines of code** produced 17
+concepts totalling about **9,700 tokens**. That was a coarse overview, not
+exhaustive coverage — a catalog covering hundreds of services will be larger, 
+but would still fit into the model context.
+
+### 2. A wiki with a DB like transaction log 
+
+All wikis go stale. This one does too, unless there is an automated pipeline that updates 
+with every commit. However even without a pipeline, this wiki freshness or staleness is clearly 
+known. It keeps a transaction log with the commit SHA of the update. Comparing with the HEAD, an Agent can easily
+understand whether the wiki needs update, and it can do so with the git diffs.
+
+OKF keeps knowledge in ordinary Markdown with YAML frontmatter, concept links
+and indexes. You can browse it on GitHub, review its diffs and commit it beside
+the source.
+
+Each concept lists its `source_files`; the bundle's `log.md`
+records the repository commit each update covered:
+
+```markdown
+## 2026-10-06
+Commit: `<repository-sha>`
+* **Update**: Refreshed the payment service for the retry behavior change.
+```
+
+When you ask for an update, the agent compares that SHA with `HEAD`, diffs the
+commits between them, and maps changed paths to concepts. Renames update source
+mappings; removed components become deprecated; significant new code becomes a
+candidate for a new concept. A rewritten history triggers a full re-scan instead
+of trusting the old commit range.
+
+The wiki is treated like code: versioned, diffable, checkpointed. The log is a
+checkpoint for incremental review, not proof that every sentence is current —
+uncommitted edits aren't in the diff. Invoke the update workflow after code
+changes, before you lean on the catalog.
+
+Human answers from the **clarify** workflow carry protection markers; updates
+preserve them. Changes to your `GUIDANCE.md` re-check the whole catalog against
+the new guidance, even when the code commit is unchanged.
+
+### 3. Implicit knowledge from commit history
+
+Code is the source of truth for what the system *does*. Commit history records
+what the team *learned*: a retry that corrupted data, a migration that had to
+be reverted, a race fixed years before the current maintainers arrived. Those
+lessons rarely survive in comments, ADRs or the heads of people who left.
+
+`catalogify history` surfaces risk-related commits, issue-closing messages and
+`Fixes:` trailers — with body excerpts and the files each commit touched. The
+agent investigates that evidence, follows relevant reverts back to the change
+they undid, and writes supported lessons with commit citations. `cochange`
+surfaces paths that repeatedly change together, hinting at relationships no
+import graph shows.
+
+Historical behavior may have changed again. The agent reconciles each lesson
+with current code and leaves unresolved questions explicit rather than
+guessing. Git can only supply reasoning somebody recorded; the clarify workflow
+captures what still needs a human.
+
+### 4. Deterministic verification
+
+The agent writes the prose; `catalogify verify` checks the claims — no LLM in
+the loop. In Python and plain git commands it resolves backtick-quoted commit
+SHAs and confirms they touched the concept's declared source files, rejects
+citations to commits that only changed tests, `git grep`s unambiguous interface
+names from concept tables in tracked non-test source, and flags source paths
+that aren't in git at all. Findings fail the command (`--strict` makes notes
+fail too). `catalogify validate` separately enforces OKF structure, links and
+log format.
+
+This catches concrete classes of hallucination — invented SHAs, citations to
+unrelated fixes, test-only evidence for production gotchas, names that don't
+exist in the code. It does not prove the prose correctly interprets the
+evidence, or that the catalog covers everything. Current behavior is grounded
+in source; historical lessons cite commits; human clarifications are recorded
+separately. A passing check still needs review.
 
 ## Quickstart: agent skill
 
@@ -187,105 +269,6 @@ The `okf.detail` setting defaults to `default`, preserving existing output.
 questions, and explanatory prose without changing which concepts are selected.
 An explicit `detail: detailed` request in your agent prompt or Spec Kit command
 overrides the config for that run without editing it.
-
-## How the knowledge base stays useful
-
-### 1. Keep the system view compact
-
-The catalog describes responsibilities, service boundaries, key interfaces,
-data and dependencies. It gives the agent a starting point for deciding where
-to investigate. It avoids documenting every function or reproducing the source
-in prose. Once the relevant area is identified, the harness can search and
-read the implementation with tools such as ripgrep and git grep.
-
-This separation matters on large repositories and monorepos with hundreds of
-microservices: the overview grows with the concepts you choose to document,
-while detailed exploration stays focused on the task. Bounded inventories and
-history excerpts also limit how much raw evidence enters the model's context.
-The savings come from selecting and summarising information, not from the
-speed of a particular search command.
-
-In the recorded Airflow run, **1.8 million lines of code** yielded 17 concepts
-containing about **9,700 tokens**. That was a coarse overview, not exhaustive
-coverage. A catalog covering hundreds of services will be larger; choose
-scope and granularity to fit your needs. See the [measurements](#worked-examples).
-
-### 2. Give stale documentation a known starting point
-
-Every wiki goes stale. This one does too. Its update log makes the last
-covered code revision explicit, so an agent can determine what changed since.
-
-OKF keeps knowledge in ordinary Markdown with YAML frontmatter, concept links
-and indexes. You can browse it on GitHub, review its diffs and commit it beside
-the source. Each concept lists its `source_files`; catalogify records a commit
-checkpoint in the newest entry of `knowledge/log.md`:
-
-```markdown
-## 2026-10-06
-Commit: `<repository-sha>`
-* **Update**: Refreshed the payment service for the retry behavior change.
-```
-
-When you ask for an update, the agent compares that SHA with `HEAD`, diffs the
-commits between them, and maps changed paths to concepts. It re-reads affected
-source files and refreshes the sections whose facts changed. Renames update
-source mappings; removed components are marked deprecated; significant new
-code becomes a candidate for a new concept. A rewritten history triggers a
-full staleness re-scan instead of relying on the old commit range.
-
-The log is a checkpoint for an incremental review, not proof that every
-sentence is current. The normal comparison covers committed changes; an
-unchanged `HEAD` does not establish freshness against uncommitted edits.
-Invoke the update workflow before relying on the catalog after code changes.
-
-Human answers from the **clarify** workflow carry protection markers. Updates
-preserve those answers; a contradiction in the code becomes an open question
-for review. Changes to your `GUIDANCE.md` also trigger a review of the whole
-catalog against the new guidance, even when the code commit is unchanged.
-
-### 3. Recover the reasoning left in git history
-
-Current code is the source of truth for implementation. Its history can explain
-why it took that shape: a retry that corrupted data, a migration that had to be
-reverted, or a race fixed years before the current maintainers arrived.
-Those fixes record some of the knowledge accumulated while operating a system.
-
-`catalogify history` surfaces risk-related commits, issue-closing messages and
-`Fixes:` trailers, along with body excerpts and the files each commit touched.
-The agent investigates that evidence, follows relevant reverts back to the
-original change, and writes supported lessons with commit citations.
-`cochange` surfaces paths that repeatedly change together, which can suggest
-relationships worth investigating even where there is no direct import.
-
-Historical behavior may have changed again. The agent must reconcile the
-lesson with current code and leave unresolved questions explicit. Git can only
-supply reasoning somebody recorded; the clarify workflow captures what still
-needs a human answer. See [a concept with history citations](#what-a-concept-looks-like).
-
-### 4. Check evidence deterministically
-
-The agent writes the prose; `catalogify verify` checks specific claims against
-the repository using Python and git commands, without an LLM call.
-
-| Check | How it works |
-| --- | --- |
-| Commit citations | Resolve backtick-quoted SHAs and check that the commits touched the concept's declared sources. |
-| Production gotchas | Reject cited commits that changed only test files; flag a non-empty Gotchas section with no commit citation. |
-| Interface names | Extract unambiguous names from interface tables and search for them in tracked, non-test source with `git grep`. |
-| Source ownership | Flag existing source paths that git does not track. |
-| Dependency links | Look for supporting imports in either direction; missing imports produce notes because runtime coupling is possible. |
-
-For example, a gotcha about a production goroutine leak fails verification if
-its cited commit changed only a test. A made-up SHA or a citation to a fix in
-an unrelated component also fails. Findings return a nonzero exit status;
-`--strict` makes notes fail too. `catalogify validate` separately checks bundle
-structure, links and log format, including the required `Commit:` line.
-
-These checks catch concrete classes of hallucination. They do not prove that
-a commit supports the surrounding explanation, that a name found in code has
-the documented behavior, or that the catalog covers everything. Current
-behavior is grounded in source; historical lessons cite commits; human
-clarifications are recorded separately. A passing check still needs review.
 
 ## Configuration
 
@@ -561,7 +544,7 @@ catalogify install [--list] [--uninstall]   # manage the agent skill
 - **`history`** returns the creation commit, recent subjects, and the flagged commits where invariants hide, each with the files it touched, its issue/PR refs and a body excerpt. A commit is flagged for a risk word in its subject (revert, deadlock, race…), for closing an issue anywhere in its message (`Fixes #842` — bug fixes whose subject sounds harmless), or for a `Fixes: <sha>` trailer naming the commit that introduced the bug. A commit that changed only test files is marked `[TEST-ONLY]` to help the agent distinguish test maintenance from production behavior. Diffs are omitted by default; `--patch` opts in, and commit text still needs review for secrets.
 - **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. This can surface candidates for shared contracts or deployment dependencies that need investigation. Co-change is a signal, not proof of a dependency.
 - **`validate`** enforces OKF §9: four error classes, twelve warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
-- **`verify`** checks commit references, source tracking, interface names and dependency evidence as described [above](#4-check-evidence-deterministically). Findings fail the command; notes require judgement and fail only with `--strict`. It does not assess whether the prose correctly interprets the evidence.
+- **`verify`** checks commit references, source tracking, interface names and dependency evidence as described [above](#4-deterministic-verification). Findings fail the command; notes require judgement and fail only with `--strict`. It does not assess whether the prose correctly interprets the evidence.
 
 Each is also installed under a bare `okf-` name (`okf-inventory`,
 `okf-history`, `okf-cochange`, `okf-validate`, `okf-verify`); the first two and
