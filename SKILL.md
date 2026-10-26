@@ -51,15 +51,20 @@ destroy human curation.
 ## Commands
 
 Five commands come with this skill. Run them from anywhere inside the repo;
-each accepts `--help`. They are on `PATH` when the skill was set up with
-`catalogify install`. If it came some other way (a Cursor plugin, a copied
-folder) and `catalogify --version` fails, run every command below through
-uv instead, pinned to the `metadata.version` at the top of this file:
-`uvx catalogify@<version> inventory`, `uvx catalogify@<version> verify knowledge`
-and so on. If `uv` is missing too, stop and ask the user to install either
-uv (<https://docs.astral.sh/uv/>) or catalogify itself
-(`uv tool install catalogify` or `pip install catalogify`); do not reimplement
-the commands.
+each accepts `--help`.
+
+Before the first command, run `catalogify --version` and compare it with the
+`metadata.version` at the top of this file. If they match, use `catalogify`
+as written below. If the command fails (the skill came from a Cursor plugin or
+a copied folder) or prints a different version (an older or newer CLI than
+this skill was written for), run every command through uv instead, pinned to
+this file's version: `uvx catalogify@<version> inventory`,
+`uvx catalogify@<version> verify knowledge` and so on. Tell the user once
+which you used, and on a mismatch that `uv tool upgrade catalogify &&
+catalogify install` brings both back in step. If `uv` is missing too, stop and
+ask the user to install uv (<https://docs.astral.sh/uv/>) or the matching
+catalogify (`uv tool install catalogify==<version>`); do not reimplement the
+commands or carry on with a mismatched CLI.
 
 | Command | Purpose |
 | --- | --- |
