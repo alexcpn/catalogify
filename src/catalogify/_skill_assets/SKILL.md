@@ -1,15 +1,6 @@
 ---
 name: catalogify
-description: >-
-  Generate and maintain an Open Knowledge Format (OKF v0.1) knowledge bundle
-  for a source-code repository — a directory of cross-linked markdown concepts
-  with YAML frontmatter describing its services, modules, APIs, data models,
-  and operations. Use when asked to document a codebase as a knowledge base,
-  build or refresh an OKF bundle or knowledge catalog, mine git history for
-  the "why" behind code, keep repo documentation in sync with code changes,
-  or validate OKF conformance. Triggers on "catalogify", "OKF", "knowledge
-  bundle", "knowledge catalog", "document this repo", "service catalog",
-  "codebase knowledge base".
+description: Generate and maintain an Open Knowledge Format (OKF v0.1) knowledge bundle for a source-code repository — a directory of cross-linked markdown concepts with YAML frontmatter describing its services, modules, APIs, data models, and operations. Use when asked to document a codebase as a knowledge base, build or refresh an OKF bundle or knowledge catalog, mine git history for the "why" behind code, keep repo documentation in sync with code changes, or validate OKF conformance. Triggers on "catalogify", "OKF", "knowledge bundle", "knowledge catalog", "document this repo", "service catalog", "codebase knowledge base".
 license: MIT
 metadata:
   version: "0.10.1"
