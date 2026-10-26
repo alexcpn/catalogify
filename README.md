@@ -175,6 +175,26 @@ Use catalogify to generate a knowledge catalog for this repo. Use detail: detail
 
 [![asciicast](https://asciinema.org/a/xSfPT9wUxCD78mz0.svg)](https://asciinema.org/a/xSfPT9wUxCD78mz0)
 
+## Cursor plugin
+
+This repository is also a Cursor plugin marketplace. The plugin lives in
+[`plugins/catalogify`](plugins/catalogify) and carries the same skill that
+`catalogify install` copies. It does not install the CLI. When `catalogify` is
+not on `PATH`, the skill runs the commands as `uvx catalogify@<version> …`
+instead, so you need either [uv](https://docs.astral.sh/uv/) or
+`uv tool install catalogify`.
+
+To try it before it is listed, link it into Cursor's local plugin directory
+and reload Cursor:
+
+```bash
+git clone https://github.com/alexcpn/catalogify
+ln -s "$PWD/catalogify/plugins/catalogify" ~/.cursor/plugins/local/catalogify
+```
+
+`plugins/catalogify` is generated. Edit the skill sources and run
+`python3 integrations/cursor/build.py`; CI fails if the two drift apart.
+
 ## Spec Kit extension
 
 Also available as a Speckit Extension https://speckit-community.github.io/extensions/okf
