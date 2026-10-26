@@ -17,7 +17,9 @@ the agent writes from. You need one of:
 
 - [uv](https://docs.astral.sh/uv/). The skill then runs the tool with
   `uvx catalogify@<version>`, and nothing else has to be installed.
-- catalogify itself: `uv tool install catalogify` or `pip install catalogify`.
+- catalogify itself, at the plugin's version: `uv tool install catalogify` or
+  `pip install catalogify`. An installed CLI of a different version is not
+  used; the skill falls back to uv instead.
 
 Also Python 3.9+ and `bash` (on Windows, the one that ships with Git for
 Windows). git is optional but history mining and incremental updates need it.
