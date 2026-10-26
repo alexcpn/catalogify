@@ -1,0 +1,19 @@
+name: Cursor plugin
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cursor installs plugins from the repository itself, so plugins/catalogify
+      # is committed. It is generated from the skill sources, and this fails when
+      # a change to SKILL.md, references/ or the manifest was not rebuilt into it.
+      - name: Plugin matches its sources
+        run: python3 integrations/cursor/build.py --check
