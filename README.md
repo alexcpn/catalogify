@@ -75,9 +75,9 @@ Use catalogify to generate a knowledge catalog for this repo. Use detail: detail
 This repository is also a Cursor plugin marketplace. The plugin lives in
 [`plugins/catalogify`](plugins/catalogify) and carries the same skill that
 `catalogify install` copies. It does not install the CLI. When `catalogify` is
-not on `PATH`, the skill runs the commands as `uvx catalogify@<version> …`
-instead, so you need either [uv](https://docs.astral.sh/uv/) or
-`uv tool install catalogify`.
+not on `PATH`, or its version differs from the skill's, the skill runs the
+commands as `uvx catalogify@<version> …` instead, so you need either
+[uv](https://docs.astral.sh/uv/) or a matching `uv tool install catalogify`.
 
 To try it before it is listed, link it into Cursor's local plugin directory
 and reload Cursor:

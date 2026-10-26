@@ -18,7 +18,8 @@ What goes into the built plugin
 
 The skill is not transformed. When the `catalogify` CLI is not on PATH, which
 is the normal case after a plugin install, SKILL.md itself tells the agent to
-run the commands through `uvx catalogify@<version>`.
+run the commands through `uvx catalogify@<version>`, and
+likewise when the installed CLI is a different version from the skill.
 
 Usage
 -----
