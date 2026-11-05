@@ -4,6 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![SkillSpector 2.12.0: SAFE 0/100, 22/22 checks passed, 2026-11-05](https://img.shields.io/static/v1?label=SkillSpector%202.12.0&message=SAFE%200%2F100%20%C2%B7%2022%2F22%20checks%20passed%20%C2%B7%202026-11-05&color=brightgreen)](https://github.com/NVIDIA/SkillSpector)
+[![Snyk Agent Scan 0.6.10: no risks, 2026-11-05](https://img.shields.io/static/v1?label=Snyk%20Agent%20Scan%200.6.10&message=no%20risks%20%C2%B7%202026-11-05&color=brightgreen)](https://labs.snyk.io/experiments/skill-scan/)
 
 `catalogify` turns a repository into an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
 (OKF v0.1) bundle: linked Markdown concepts covering architecture, services,
