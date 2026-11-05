@@ -3,19 +3,21 @@
 
 catalogify is meant to be run once per repository and then reused: the bundle
 is committed next to the code and every later agent session reads it. This
-measures that use. Claude Code runs headless in Docker on the same Airflow
-checkout with the same prompt, in two arms:
+measures that use. Claude Code runs headless in Docker on an Airflow checkout
+with the same prompt, in two arms:
 
-  bundle  knowledge/ from fixtures/ is committed in the repo, and one line in
-          AGENTS.md points at it
+  bundle  the scenario's fixture bundle is committed as knowledge/, and a short
+          section in AGENTS.md points at it
   none    the checkout as it is
 
 Neither arm has the catalogify skill installed, so the bundle is the only
-difference. Subcommands:
+difference. Each scenario pins its own Airflow commit (the parent of a real
+upstream change), its bundle scope and its tasks.
 
-  run.py bundle              build the fixture bundle once (catalogify skill, in Docker)
-  run.py trials [-n 3]       run every task in both arms, n attempts each
-  run.py summary             aggregate results/ into results/SUMMARY.md
+  run.py bundle  -s SCENARIO           build the scenario's fixture bundle once (catalogify skill)
+  run.py trials  -s SCENARIO [-n 3]    run its tasks in both arms, n attempts each
+  run.py retry   -s SCENARIO --run X   re-run attempts that ended in an API error
+  run.py summary -s SCENARIO [--run X] aggregate results/SCENARIO/X into SUMMARY.md
 
 Credentials: an Anthropic-compatible key read from the file in $REUSE_EVAL_KEY_FILE
 (default ~/.openrouter.key) and passed to the container through the environment.
@@ -39,67 +41,148 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
-IMAGE = "catalogify-reuse-eval:latest"
-BASE_IMAGE = "catalogify-eval-airflow:base"
-FIXTURE = HERE / "fixtures" / "airflow-metrics-knowledge"
 RESULTS = HERE / "results"
-UPSTREAM_SHA = "b03e48a875d991ad42b9d81efb7e75e001879404"
+ENV_DIR = ROOT / "integrations" / "skillevaluator" / "evals" / "environment"
+SKILL_DIR = ROOT / "plugins" / "catalogify" / "skills" / "catalogify"
 
 MODEL = os.environ.get("REUSE_EVAL_MODEL", "anthropic/claude-sonnet-5-5")
 BASE_URL = os.environ.get("ANTHROPIC_BASE_URL", "https://openrouter.ai/api")
 KEY_FILE = Path(os.environ.get("REUSE_EVAL_KEY_FILE", "~/.openrouter.key")).expanduser()
 
-POINTER = (
-    "\n## Knowledge bundle\n\n"
-    "`knowledge/` is an OKF knowledge bundle for the metrics code (shared/observability, "
-    "airflow-core and task-sdk metrics clients), generated from the code and its git history. "
-    "Start with `knowledge/index.md` and `knowledge/architecture/overview.md` before exploring "
-    "that code.\n"
+
+def pointer(what: str) -> str:
+    return (
+        "\n## Knowledge bundle\n\n"
+        f"`knowledge/` is an OKF knowledge bundle for {what}, generated from the code and its git "
+        "history. Start with `knowledge/index.md` and `knowledge/architecture/overview.md` before "
+        "exploring that code.\n"
+    )
+
+
+def bundle_prompt(scope: str) -> str:
+    return (
+        f"Use the catalogify skill to build an OKF knowledge bundle in `knowledge/` for {scope} "
+        "Do not change any source code. When the bundle passes `catalogify validate` and "
+        "`catalogify verify`, stop."
+    )
+
+
+# --------------------------------------------------------------- scenarios
+
+METRICS_FEATURE = (
+    "You are working in a checkout of Apache Airflow. Implement this feature request "
+    "(apache/airflow#70666):\n\n"
+    "> Airflow submits metrics through a network connection defined by host and port. However, "
+    "the existing backends also support using an UDS socket but there is no way to configure "
+    "that at the moment. A new `[metrics] statsd_socket_path` will be very useful to unlock "
+    "this.\n\n"
+    "The option is `[metrics] statsd_socket_path`, unset by default. When it is set, metrics go "
+    "to that Unix Domain Socket instead of `statsd_host`/`statsd_port`, for both the StatsD "
+    "backend and the Datadog backend. With it unset, behaviour must not change. Add unit tests. "
+    "The test dependencies are installed in /opt/afvenv, for example "
+    "`cd shared/observability && /opt/afvenv/bin/python -m pytest tests/observability/metrics/`.\n\n"
+    "Work only from this checkout: do not fetch from the remote or look up the upstream change. "
+    "Do not commit."
 )
 
-BUNDLE_PROMPT = (
-    "Use the catalogify skill to build an OKF knowledge bundle in `knowledge/` for the metrics "
-    "code of this Apache Airflow checkout. Scope it to the StatsD, Datadog and OpenTelemetry "
-    "metrics clients in `shared/observability/src/airflow_shared/observability/metrics/`, "
-    "`airflow-core/src/airflow/observability/metrics/` and "
-    "`task-sdk/src/airflow/sdk/observability/metrics/`. Do not change any source code. When the "
-    "bundle passes `catalogify validate` and `catalogify verify`, stop."
+METRICS_WHY = (
+    "Answer from this Airflow checkout, without changing any files. Why does the task SDK have "
+    "its own metrics wrapper (`task-sdk/src/airflow/sdk/observability/metrics/`) instead of "
+    "importing airflow-core's, and what does that mean for someone changing how the StatsD "
+    "client is configured? Cite the commit that introduced the split. Keep the answer under "
+    "200 words."
 )
 
-TASKS = {
-    "feature": (
-        "You are working in a checkout of Apache Airflow. Implement this feature request "
-        "(apache/airflow#70666):\n\n"
-        "> Airflow submits metrics through a network connection defined by host and port. However, "
-        "the existing backends also support using an UDS socket but there is no way to configure "
-        "that at the moment. A new `[metrics] statsd_socket_path` will be very useful to unlock "
-        "this.\n\n"
-        "The option is `[metrics] statsd_socket_path`, unset by default. When it is set, metrics go "
-        "to that Unix Domain Socket instead of `statsd_host`/`statsd_port`, for both the StatsD "
-        "backend and the Datadog backend. With it unset, behaviour must not change. Add unit tests. "
-        "The test dependencies are installed in /opt/afvenv, for example "
-        "`cd shared/observability && /opt/afvenv/bin/python -m pytest tests/observability/metrics/`.\n\n"
-        "Work only from this checkout: do not fetch from the remote or look up the upstream change. "
-        "Do not commit."
-    ),
-    "why": (
-        "Answer from this Airflow checkout, without changing any files. Why does the task SDK have "
-        "its own metrics wrapper (`task-sdk/src/airflow/sdk/observability/metrics/`) instead of "
-        "importing airflow-core's, and what does that mean for someone changing how the StatsD "
-        "client is configured? Cite the commit that introduced the split. Keep the answer under "
-        "200 words."
-    ),
+# apache/airflow#64890, as the user filed it.
+DAGRUN_NOTE_ISSUE = """\
+> **Support updating DagRun note from notifier/callback context in Airflow 3**
+>
+> In Airflow 2, a common notifier/callback pattern was:
+>
+> 1. Post an alert to an external system such as Slack.
+> 2. Persist a backlink or correlation identifier on the `DagRun` note.
+> 3. Reuse that stored link later to update the original alert if the DagRun is cleared and eventually succeeds.
+>
+> That migration path is not straightforward in Airflow 3.
+>
+> In Airflow 3 callback/notifier code, `context["dag_run"]` is no longer the old SQLAlchemy `DagRun` contract that many Airflow 2 implementations relied on, and the Task SDK client does not appear to expose a supported helper for updating `DagRun.note` from callback/notifier runtime code.
+>
+> There is already public API support for DagRun note patching, so this request is specifically about having a supported callback-safe/runtime-safe way to do that from Airflow 3 notifier code.
+>
+> In Airflow 2 this was commonly done with ORM/session access such as `DagRunNote`, `dag_run.dag_run_note`, and `provide_session`. In Airflow 3 that pattern is not portable, but I could not find a supported replacement in notifier/callback context.
+"""
+
+DAGRUN_NOTE_PLAN = (
+    "You are working in a checkout of Apache Airflow. A user filed this feature request "
+    "(apache/airflow#64890):\n\n" + DAGRUN_NOTE_ISSUE + "\n"
+    "Write an implementation plan for a maintainer to follow: every file that has to change or be "
+    "created, and what changes in each, in the order the work should be done. Use repository-"
+    "relative paths. Include generated files and any versioning the change requires. Do not "
+    "write the code and do not change any files; reply with the plan only.\n\n"
+    "Work only from this checkout: do not fetch from the remote or look up the upstream change."
+)
+
+# What apache/airflow#69403 (merge 0b6c38502a) actually changed, one entry per
+# part of the change. Written from the upstream diff before any trial ran. A plan
+# covers a part when it mentions any of the patterns (case-insensitive).
+DAGRUN_NOTE_PARTS = {
+    "execution_api_route": [r"execution_api/routes/task_instances"],
+    "execution_api_datamodel": [r"execution_api/datamodels/taskinstance"],
+    "cadwyn_version": [r"execution_api/versions", r"\bcadwyn\b"],
+    "sdk_api_client": [r"sdk/api/client\.py"],
+    "sdk_generated_models": [r"_generated\.py", r"datamodel-codegen"],
+    "supervisor_comms_message": [r"execution_time/comms\.py"],
+    "supervisor_relay": [r"execution_time/supervisor\.py", r"request_handlers\.py"],
+    "runtime_helper": [r"execution_time/task_runner\.py", r"sdk/types\.py"],
+    "supervisor_schema_version": [r"execution_time/schema"],
+    "ts_sdk_generated": [r"ts-sdk"],
+    "note_without_user": [r"services/public/dag_run", r"user[_ ]id\b.{0,80}(none|null)",
+                          r"(without|no) (a )?user attribution"],
+}
+
+SCENARIOS = {
+    "metrics": {
+        "base": "f44bb16d825edcb533b5819c152c4d6a23a0ffd9",
+        "upstream": "b03e48a875d991ad42b9d81efb7e75e001879404",
+        "fixture": "airflow-metrics-knowledge",
+        "pointer": pointer("the metrics code (shared/observability, airflow-core and task-sdk "
+                           "metrics clients)"),
+        "bundle_prompt": bundle_prompt(
+            "the metrics code of this Apache Airflow checkout. Scope it to the StatsD, Datadog and "
+            "OpenTelemetry metrics clients in "
+            "`shared/observability/src/airflow_shared/observability/metrics/`, "
+            "`airflow-core/src/airflow/observability/metrics/` and "
+            "`task-sdk/src/airflow/sdk/observability/metrics/`."),
+        "tasks": {"feature": METRICS_FEATURE, "why": METRICS_WHY},
+    },
+    "dagrun-note": {
+        "base": "8d4ab8a94db291a359b686ac545211f4c440cb3e",       # parent of apache/airflow#69403
+        "upstream": "0b6c38502abb6a152ab6a6334910f171c75c4e5f",
+        "fixture": "airflow-execution-api-knowledge",
+        "pointer": pointer("the Execution API and the Task SDK runtime that talks to it "
+                           "(execution_api in airflow-core; api/ and execution_time/ in task-sdk)"),
+        "bundle_prompt": bundle_prompt(
+            "the Execution API and the Task SDK runtime that talks to it, in this Apache Airflow "
+            "checkout. Scope it to `airflow-core/src/airflow/api_fastapi/execution_api/`, "
+            "`task-sdk/src/airflow/sdk/api/` and `task-sdk/src/airflow/sdk/execution_time/`."),
+        "tasks": {"plan": DAGRUN_NOTE_PLAN},
+    },
 }
 
 
 # ----------------------------------------------------------------- docker
 
-def build_images() -> None:
-    env_dir = ROOT / "integrations" / "skillevaluator" / "evals" / "environment"
-    subprocess.run(["docker", "build", "-q", "-t", BASE_IMAGE, str(env_dir)], check=True,
-                   stdout=subprocess.DEVNULL)
-    subprocess.run(["docker", "build", "-q", "-t", IMAGE, "--build-arg", f"BASE={BASE_IMAGE}",
-                    str(HERE)], check=True, stdout=subprocess.DEVNULL)
+def images(scn: str) -> tuple[str, str]:
+    return f"catalogify-eval-airflow:{scn}", f"catalogify-reuse-eval:{scn}"
+
+
+def build_images(scn: str) -> None:
+    base, image = images(scn)
+    subprocess.run(["docker", "build", "-q", "-t", base, "--build-arg",
+                    f"AIRFLOW_BASE={SCENARIOS[scn]['base']}", str(ENV_DIR)],
+                   check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["docker", "build", "-q", "-t", image, "--build-arg", f"BASE={base}", str(HERE)],
+                   check=True, stdout=subprocess.DEVNULL)
 
 
 def agent_env() -> dict[str, str]:
@@ -124,7 +207,7 @@ cd /workspace/airflow
 if [ "$ARM" = bundle ]; then
   cp -R /eval/fixture knowledge
   cat /eval/pointer.md >> AGENTS.md
-  git add knowledge AGENTS.md && git commit -qm "Add knowledge bundle for the metrics code"
+  git add knowledge AGENTS.md && git commit -qm "Add knowledge bundle"
 fi
 if [ "$ARM" = skill ]; then
   mkdir -p /root/.claude/skills && cp -R /eval/skill /root/.claude/skills/catalogify
@@ -148,28 +231,30 @@ fi
 """
 
 
-def run_container(task: str, arm: str, prompt: str, out: Path) -> None:
+def run_container(scn: str, task: str, arm: str, prompt: str, out: Path) -> None:
+    cfg = SCENARIOS[scn]
+    _, image = images(scn)
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         ev = Path(tmp)
         (ev / "prompt.txt").write_text(prompt)
-        (ev / "pointer.md").write_text(POINTER)
+        (ev / "pointer.md").write_text(cfg["pointer"])
         (ev / "run.sh").write_text(CONTAINER_SCRIPT)
         shutil.copy(HERE / "grade_feature.py", ev / "grade_feature.py")
         if arm == "bundle":
-            shutil.copytree(FIXTURE, ev / "fixture")
+            shutil.copytree(HERE / "fixtures" / cfg["fixture"], ev / "fixture")
         if arm == "skill":
-            shutil.copytree(ROOT / "plugins" / "catalogify" / "skills" / "catalogify", ev / "skill")
+            shutil.copytree(SKILL_DIR, ev / "skill")
         cmd = ["docker", "run", "--rm", "-v", f"{ev}:/eval:ro", "-v", f"{out}:/out",
                "-e", "ANTHROPIC_BASE_URL", "-e", "ANTHROPIC_API_KEY",
                "-e", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "-e", "ANTHROPIC_SMALL_FAST_MODEL",
                "-e", "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
                "-e", f"MODEL={MODEL}", "-e", f"ARM={arm}", "-e", f"TASK={task}",
-               "-e", f"UPSTREAM_SHA={UPSTREAM_SHA}", IMAGE, "bash", "/eval/run.sh"]
+               "-e", f"UPSTREAM_SHA={cfg['upstream']}", image, "bash", "/eval/run.sh"]
         subprocess.run(cmd, env=agent_env(), timeout=3600, check=False,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # files written as root inside the container; make them readable/removable here
-    subprocess.run(["docker", "run", "--rm", "-v", f"{out}:/out", IMAGE, "chmod", "-R", "a+rwX", "/out"],
+    subprocess.run(["docker", "run", "--rm", "-v", f"{out}:/out", image, "chmod", "-R", "a+rwX", "/out"],
                    check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -186,6 +271,12 @@ def grade_why(answer: str) -> dict[str, float]:
     }
 
 
+def grade_plan(plan: str) -> dict[str, float]:
+    text = plan.lower()
+    return {part: 1.0 if any(re.search(p, text) for p in pats) else 0.0
+            for part, pats in DAGRUN_NOTE_PARTS.items()}
+
+
 def collect(out: Path, task: str) -> dict:
     rec: dict = {"dir": str(out.relative_to(HERE))}
     try:
@@ -199,7 +290,6 @@ def collect(out: Path, task: str) -> dict:
         (out / "record.json").write_text(json.dumps(rec, indent=2))
         return rec
     rec.update({
-        "ok": not res.get("is_error", True),
         "cost_usd": res.get("total_cost_usd"),
         "turns": res.get("num_turns"),
         "seconds": round((res.get("duration_ms") or 0) / 1000, 1),
@@ -208,44 +298,48 @@ def collect(out: Path, task: str) -> dict:
         "output_tokens": usage.get("output_tokens"),
         "fetched_upstream": (out / "fetched_upstream").read_text().strip() == "1"
         if (out / "fetched_upstream").exists() else None,
+        "changed_files": bool((out / "status.txt").exists() and (out / "status.txt").read_text().strip()),
     })
+    answer = res.get("result") or ""
     if task == "feature":
         try:
             g = json.loads((out / "grade.json").read_text())
             rec["score"] = g["passed"] / g["total"]
-            rec["failed_checks"] = [k for k, v in g["checks"].items() if not v["pass"]]
+            rec["missed"] = [k for k, v in g["checks"].items() if not v["pass"]]
         except (OSError, json.JSONDecodeError, KeyError):
             rec["score"] = 0.0
     else:
-        m = grade_why(res.get("result") or "")
-        rec.update(m)
+        m = grade_plan(answer) if task == "plan" else grade_why(answer)
         rec["score"] = sum(m.values()) / len(m)
-        rec["answer"] = (res.get("result") or "")[:2000]
-        rec["changed_files"] = bool((out / "status.txt").exists() and (out / "status.txt").read_text().strip())
+        rec["missed"] = [k for k, v in m.items() if not v]
+        rec["answer_chars"] = len(answer)
+    (out / "answer.md").write_text(answer)
     (out / "record.json").write_text(json.dumps(rec, indent=2))
     return rec
 
 
 # ------------------------------------------------------------- subcommands
 
-def cmd_bundle(_: argparse.Namespace) -> None:
-    build_images()
-    out = RESULTS / "bundle-build" / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+def cmd_bundle(args: argparse.Namespace) -> None:
+    cfg = SCENARIOS[args.scenario]
+    fixture = HERE / "fixtures" / cfg["fixture"]
+    build_images(args.scenario)
+    out = RESULTS / args.scenario / "bundle-build" / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     print(f"building the fixture bundle with the catalogify skill -> {out}", flush=True)
-    run_container("bundle", "skill", BUNDLE_PROMPT, out)
+    run_container(args.scenario, "bundle", "skill", cfg["bundle_prompt"], out)
     rec = collect(out, "bundle")
     if not (out / "knowledge" / "index.md").is_file():
-        sys.exit(f"no bundle produced; see {out}/claude.stderr")
-    if FIXTURE.exists():
-        shutil.rmtree(FIXTURE)
-    shutil.copytree(out / "knowledge", FIXTURE)
-    print(json.dumps({k: rec[k] for k in ("cost_usd", "turns", "seconds")}, indent=2))
+        sys.exit(f"no bundle produced; see {out}/claude.json and claude.stderr")
+    if fixture.exists():
+        shutil.rmtree(fixture)
+    shutil.copytree(out / "knowledge", fixture)
+    print(json.dumps({k: rec.get(k) for k in ("cost_usd", "turns", "seconds", "input_tokens", "output_tokens")}, indent=2))
     for name in ("validate.json", "verify.json"):
         if (out / name).exists():
             d = json.loads((out / name).read_text() or "{}")
             print(name, d.get("result"), "errors" if "errors" in d else "findings",
                   len(d.get("errors", d.get("findings", []))))
-    print(f"fixture written to {FIXTURE.relative_to(ROOT)}")
+    print(f"fixture written to {fixture.relative_to(ROOT)}")
 
 
 def report(task: str, arm: str, i: int, rec: dict) -> None:
@@ -253,13 +347,37 @@ def report(task: str, arm: str, i: int, rec: dict) -> None:
         print(f"  {task:8} {arm:6} #{i}: ERROR {rec['error'][:100]}", flush=True)
     else:
         print(f"  {task:8} {arm:6} #{i}: score {rec['score']:.2f}  ${rec['cost_usd'] or 0:.2f}  "
-              f"{rec['turns']} turns  {rec['seconds']}s", flush=True)
+              f"{rec['turns']} turns  {rec['seconds']}s  {rec['input_tokens']:,} in", flush=True)
+
+
+def cmd_trials(args: argparse.Namespace) -> None:
+    cfg = SCENARIOS[args.scenario]
+    if not (HERE / "fixtures" / cfg["fixture"] / "index.md").is_file():
+        sys.exit(f"no fixture bundle; run `run.py bundle -s {args.scenario}` first")
+    tasks = args.tasks or list(cfg["tasks"])
+    build_images(args.scenario)
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    jobs = [(task, arm, i) for i in range(1, args.n + 1) for task in tasks for arm in ("bundle", "none")]
+    print(f"{len(jobs)} trials, {args.parallel} at a time -> results/{args.scenario}/{stamp}", flush=True)
+
+    def one(job):
+        task, arm, i = job
+        out = RESULTS / args.scenario / stamp / task / arm / f"attempt-{i}"
+        run_container(args.scenario, task, arm, cfg["tasks"][task], out)
+        rec = collect(out, task)
+        report(task, arm, i, rec)
+        return rec
+
+    with cf.ThreadPoolExecutor(max_workers=args.parallel) as pool:
+        list(pool.map(one, jobs))
+    cmd_summary(argparse.Namespace(scenario=args.scenario, run=stamp))
 
 
 def cmd_retry(args: argparse.Namespace) -> None:
     """Re-run attempts of an earlier run that ended in an API error."""
-    run = RESULTS / args.run
-    build_images()
+    cfg = SCENARIOS[args.scenario]
+    run = RESULTS / args.scenario / args.run
+    build_images(args.scenario)
     for rec_path in sorted(run.glob("*/*/attempt-*/record.json")):
         out = rec_path.parent
         task, arm, i = out.parent.parent.name, out.parent.name, int(out.name.split("-")[1])
@@ -267,40 +385,23 @@ def cmd_retry(args: argparse.Namespace) -> None:
             for f in out.iterdir():
                 if f.is_file():
                     f.unlink()
-            run_container(task, arm, TASKS[task], out)
+            run_container(args.scenario, task, arm, cfg["tasks"][task], out)
             report(task, arm, i, collect(out, task))
-    cmd_summary(argparse.Namespace(run=args.run))
-
-
-def cmd_trials(args: argparse.Namespace) -> None:
-    if not (FIXTURE / "index.md").is_file():
-        sys.exit("no fixture bundle; run `run.py bundle` first")
-    build_images()
-    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    jobs = [(task, arm, i) for i in range(1, args.n + 1) for task in args.tasks for arm in ("bundle", "none")]
-    print(f"{len(jobs)} trials, {args.parallel} at a time -> results/{stamp}", flush=True)
-
-    def one(job):
-        task, arm, i = job
-        out = RESULTS / stamp / task / arm / f"attempt-{i}"
-        run_container(task, arm, TASKS[task], out)
-        rec = collect(out, task)
-        report(task, arm, i, rec)
-        return rec
-
-    with cf.ThreadPoolExecutor(max_workers=args.parallel) as pool:
-        list(pool.map(one, jobs))
-    cmd_summary(argparse.Namespace(run=stamp))
+    cmd_summary(argparse.Namespace(scenario=args.scenario, run=args.run))
 
 
 def cmd_summary(args: argparse.Namespace) -> None:
-    runs = sorted(p for p in RESULTS.iterdir() if p.is_dir() and re.match(r"\d{8}-\d{6}$", p.name))
+    base = RESULTS / args.scenario
+    runs = sorted(p for p in base.iterdir() if p.is_dir() and re.match(r"\d{8}-\d{6}$", p.name)) \
+        if base.is_dir() else []
     if not runs:
-        sys.exit("no trial runs in results/")
-    run = RESULTS / (args.run or runs[-1].name)
-    lines = [f"# Bundle reuse: {run.name}", "", f"Model `{MODEL}`, Claude Code in Docker.", ""]
-    lines += ["| Task | Arm | Attempts | Score (mean) | Cost $ (mean) | Turns (mean) | "
-              "Seconds (mean) | Input tokens (mean) |", "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+        sys.exit(f"no trial runs in {base}")
+    run = base / (args.run or runs[-1].name)
+    lines = [f"# Bundle reuse: {args.scenario}, {run.name}", "",
+             f"Model `{MODEL}`, Claude Code in Docker.", "",
+             "| Task | Arm | Attempts | Score (mean) | Cost $ (mean) | Turns (mean) | "
+             "Seconds (mean) | Input tokens (mean) | Output tokens (mean) |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for task_dir in sorted(p for p in run.iterdir() if p.is_dir()):
         for arm in ("bundle", "none"):
             # Re-grade from the raw outputs so grader fixes apply to earlier runs.
@@ -314,18 +415,20 @@ def cmd_summary(args: argparse.Namespace) -> None:
                 vals = [r[key] for r in recs if isinstance(r.get(key), (int, float))]
                 return statistics.mean(vals) if vals else float("nan")
 
-            lines.append(f"| {task_dir.name} | {arm} | {len(recs)}{f' (+{errors} errored)' if errors else ''} | {mean('score'):.2f} | "
+            lines.append(f"| {task_dir.name} | {arm} | {len(recs)}"
+                         f"{f' (+{errors} errored)' if errors else ''} | {mean('score'):.2f} | "
                          f"{mean('cost_usd'):.2f} | {mean('turns'):.1f} | {mean('seconds'):.0f} | "
-                         f"{mean('input_tokens'):,.0f} |")
+                         f"{mean('input_tokens'):,.0f} | {mean('output_tokens'):,.0f} |")
     lines += ["", "Per attempt:", ""]
     for rec_path in sorted(run.glob("*/*/attempt-*/record.json")):
         r = json.loads(rec_path.read_text())
         if r.get("error"):
             lines.append(f"- `{r['dir']}`: excluded, API error: {r['error'][:120]}")
             continue
-        extra = r.get("failed_checks") or {k: r[k] for k in ("cites_split_commit", "names_three_places") if k in r}
         lines.append(f"- `{r['dir']}`: score {r['score']:.2f}, ${r.get('cost_usd') or 0:.2f}, "
-                     f"{r.get('turns')} turns, fetched upstream: {r.get('fetched_upstream')}; {extra}")
+                     f"{r.get('turns')} turns, {r.get('input_tokens'):,} input tokens, "
+                     f"fetched upstream: {r.get('fetched_upstream')}, changed files: "
+                     f"{r.get('changed_files')}; missed: {r.get('missed')}")
     (run / "SUMMARY.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
 
@@ -333,16 +436,25 @@ def cmd_summary(args: argparse.Namespace) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("bundle").set_defaults(func=cmd_bundle)
+
+    def scenario_arg(p):
+        p.add_argument("-s", "--scenario", required=True, choices=list(SCENARIOS))
+
+    b = sub.add_parser("bundle")
+    scenario_arg(b)
+    b.set_defaults(func=cmd_bundle)
     t = sub.add_parser("trials")
+    scenario_arg(t)
     t.add_argument("-n", type=int, default=3, help="attempts per task and arm")
-    t.add_argument("--tasks", nargs="+", default=list(TASKS), choices=list(TASKS))
+    t.add_argument("--tasks", nargs="+")
     t.add_argument("--parallel", type=int, default=2)
     t.set_defaults(func=cmd_trials)
     r = sub.add_parser("retry", help="re-run attempts that ended in an API error")
+    scenario_arg(r)
     r.add_argument("--run", required=True)
     r.set_defaults(func=cmd_retry)
     s = sub.add_parser("summary")
+    scenario_arg(s)
     s.add_argument("--run")
     s.set_defaults(func=cmd_summary)
     args = ap.parse_args()
