@@ -10,3 +10,9 @@ RUN curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" \
 ENV PATH="/root/.local/bin:${PATH}" \
     IS_SANDBOX=1 \
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+# This branch's catalogify, built into wheel/ by run.py, so `catalogify find`
+# exists before the version is published. Trial arms that don't mention it
+# never learn it is there.
+COPY wheel/ /tmp/catalogify-wheel/
+RUN pip install --no-cache-dir /tmp/catalogify-wheel/*.whl && catalogify --version

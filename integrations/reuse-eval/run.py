@@ -70,6 +70,17 @@ def trust_pointer(what: str) -> str:
     )
 
 
+def find_pointer(what: str) -> str:
+    return (
+        "\n## Knowledge bundle\n\n"
+        f"`knowledge/` is an OKF knowledge bundle for {what}. Do not read it up front. Before "
+        "you finalize a plan or an edit, run `catalogify find <file>` for each file you plan to "
+        "change. It prints the guardrails, typed relations and playbooks that cover that file in "
+        "a few lines. Follow every guardrail, and include what each playbook says must also "
+        "change.\n"
+    )
+
+
 def bundle_prompt(scope: str) -> str:
     return (
         f"Use the catalogify skill to build an OKF knowledge bundle in `knowledge/` for {scope} "
@@ -172,6 +183,24 @@ SCENARIOS = {
             "`task-sdk/src/airflow/sdk/observability/metrics/`."),
         "tasks": {"feature": METRICS_FEATURE, "why": METRICS_WHY},
     },
+    # Same feature and tasks; the bundle is rebuilt by catalogify 0.11.0 with
+    # typed relations, playbooks and guardrails, and the agent reaches it
+    # through `catalogify find` instead of reading it.
+    "dagrun-note-v2": {
+        "base": "8d4ab8a94db291a359b686ac545211f4c440cb3e",
+        "upstream": "0b6c38502abb6a152ab6a6334910f171c75c4e5f",
+        "fixture": "airflow-execution-api-knowledge-v2",
+        "pointer": pointer("the Execution API and the Task SDK runtime that talks to it"),
+        "find_pointer": find_pointer("the Execution API and the Task SDK runtime that talks to it "
+                                     "(execution_api in airflow-core; api/ and execution_time/ in "
+                                     "task-sdk)"),
+        "bundle_prompt": bundle_prompt(
+            "the Execution API and the Task SDK runtime that talks to it, in this Apache Airflow "
+            "checkout. Scope it to `airflow-core/src/airflow/api_fastapi/execution_api/`, "
+            "`task-sdk/src/airflow/sdk/api/` and `task-sdk/src/airflow/sdk/execution_time/`. "
+            "Include the typed relations, playbooks and guardrails the generate workflow describes."),
+        "tasks": {"plan": DAGRUN_NOTE_PLAN},
+    },
     "dagrun-note": {
         "base": "8d4ab8a94db291a359b686ac545211f4c440cb3e",       # parent of apache/airflow#69403
         "upstream": "0b6c38502abb6a152ab6a6334910f171c75c4e5f",
@@ -190,7 +219,7 @@ SCENARIOS = {
 }
 
 
-ARMS = ("bundle", "bundle-trust", "none")
+ARMS = ("bundle", "bundle-trust", "bundle-find", "none")
 
 
 # ----------------------------------------------------------------- docker
@@ -199,8 +228,17 @@ def images(scn: str) -> tuple[str, str]:
     return f"catalogify-eval-airflow:{scn}", f"catalogify-reuse-eval:{scn}"
 
 
+def build_wheel() -> None:
+    """This branch's catalogify, for the image: the version under test may be unpublished."""
+    out = HERE / "wheel"
+    shutil.rmtree(out, ignore_errors=True)
+    subprocess.run(["uv", "build", "--wheel", "--out-dir", str(out), str(ROOT)], check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def build_images(scn: str) -> None:
     base, image = images(scn)
+    build_wheel()
     subprocess.run(["docker", "build", "-q", "-t", base, "--build-arg",
                     f"AIRFLOW_BASE={SCENARIOS[scn]['base']}", str(ENV_DIR)],
                    check=True, stdout=subprocess.DEVNULL)
@@ -227,7 +265,7 @@ def agent_env() -> dict[str, str]:
 CONTAINER_SCRIPT = r"""
 set -u
 cd /workspace/airflow
-if [ "$ARM" = bundle ] || [ "$ARM" = bundle-trust ]; then
+if [ "$ARM" = bundle ] || [ "$ARM" = bundle-trust ] || [ "$ARM" = bundle-find ]; then
   cp -R /eval/fixture knowledge
   cat /eval/pointer.md >> AGENTS.md
   git add knowledge AGENTS.md && git commit -qm "Add knowledge bundle"
@@ -248,8 +286,8 @@ if [ "$TASK" = feature ]; then
 fi
 if [ "$ARM" = skill ] && [ -d knowledge ]; then
   rm -rf /out/knowledge && cp -R knowledge /out/knowledge
-  uvx catalogify@0.10.1 validate knowledge --json > /out/validate.json 2>/dev/null
-  uvx catalogify@0.10.1 verify knowledge --json > /out/verify.json 2>/dev/null
+  catalogify validate knowledge --json > /out/validate.json 2>/dev/null
+  catalogify verify knowledge --json > /out/verify.json 2>/dev/null
 fi
 """
 
@@ -261,10 +299,11 @@ def run_container(scn: str, task: str, arm: str, prompt: str, out: Path) -> None
     with tempfile.TemporaryDirectory() as tmp:
         ev = Path(tmp)
         (ev / "prompt.txt").write_text(prompt)
-        (ev / "pointer.md").write_text(cfg["trust_pointer"] if arm == "bundle-trust" else cfg["pointer"])
+        (ev / "pointer.md").write_text({"bundle-trust": cfg.get("trust_pointer"),
+                                        "bundle-find": cfg.get("find_pointer")}.get(arm) or cfg["pointer"])
         (ev / "run.sh").write_text(CONTAINER_SCRIPT)
         shutil.copy(HERE / "grade_feature.py", ev / "grade_feature.py")
-        if arm in ("bundle", "bundle-trust"):
+        if arm in ("bundle", "bundle-trust", "bundle-find"):
             shutil.copytree(HERE / "fixtures" / cfg["fixture"], ev / "fixture")
         if arm == "skill":
             shutil.copytree(SKILL_DIR, ev / "skill")
