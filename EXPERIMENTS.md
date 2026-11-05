@@ -13,12 +13,13 @@ repeating to be cited.
 | 1 | Online Boutique | catalogify 0.5.0 | Codex `gpt-5.5` | 20 | 1,394,136 | 6 min 43 s | 17 |
 | 2 | Online Boutique | catalogify 0.7.0 | Codex `gpt-5.5` | 21 | 1,600,683 | 8 min 19 s | 0 |
 | 3 | `apache/airflow` | catalogify 0.8.0 | Codex `gpt-5.5` | 17 | 1,207,172 | 6 min 29 s | 0 |
+| 4 | `apache/airflow`, metrics clients | catalogify 0.10.1 | Claude Code, Sonnet 5.5 | 9 | 962,725 | 2 min 38 s | 0 |
 
 Findings are `catalogify verify` results on the finished bundle. Run 0 predates
 `verify` and was judged retrospectively. Runs 1 and 2 are the same repository
 and commit, regenerated under a later version.
 
-Detail sections: run 1 in §1–§8, run 2 in §9, run 3 in §11, run 0 in §12.
+Detail sections: run 1 in §1–§8, run 2 in §9, run 3 in §11, run 0 in §12, run 4 in §13.
 
 ---
 
@@ -368,6 +369,65 @@ inputs is the strongest single argument in this log for putting the check in
 the tool rather than the prompt.
 
 A corrected copy exists as `knowledge-fixed`, which verifies clean.
+
+## 13. Run 4 — Airflow metrics clients, and whether the bundle helps
+
+**Date:** 5 November 2026
+
+A scoped bundle for the metrics code of `apache/airflow` at `f44bb16d82`,
+the parent of apache/airflow#70517. It covers
+`shared/observability/.../metrics/`, `airflow-core/.../observability/metrics/`
+and `task-sdk/.../observability/metrics/`. Claude Code 2.1.318 ran headless in
+Docker, using Sonnet 5.5 through OpenRouter and the skill as published in
+0.10.1. Harness and fixture: `integrations/reuse-eval/`.
+
+### Cost and result
+
+| | |
+|---|---:|
+| Turns | 19 |
+| Wall clock | 2 min 38 s |
+| Fresh input / cache read / cache write | 30 / 857,974 / 88,481 |
+| Output | 16,240 |
+| Concepts | 9 |
+| `validate` | 0 errors, 8 warnings (all W8) |
+| **`verify`** | **0 findings**, 0 notes |
+
+### Reuse A/B
+
+The bundle was committed into the checkout with a pointer in Airflow's
+`AGENTS.md`. Claude Code then ran two tasks with it and without it, with no
+skill installed in either arm. The first task implements the feature from the
+issue text, graded by six behavioural checks through the airflow-core and
+task-sdk wrappers. The second asks why task-sdk has its own metrics wrapper,
+graded on citing the splitting commit and naming the three places.
+
+| Task | Arm | Valid attempts | Score | Turns (mean) | Seconds (mean) |
+|---|---|---:|---:|---:|---:|
+| feature | bundle | 2 | 1.00 | 12.0 | 106 |
+| feature | none | 2 | 1.00 | 10.5 | 49 |
+| why | bundle | 2 | 1.00 | 4.5 | 19 |
+| why | none | 2 | 1.00 | 3.0 | 13 |
+
+The bundle did not change correctness, and runs that had it took more turns
+and more time. On these tasks the agent recovered everything it needed from
+grep and one `git log`. The three copies of the client share names, and the
+reason for the split is in a commit message. The third attempt in each cell
+failed with HTTP 402 when the OpenRouter balance ran out, and is excluded.
+
+### Caveats
+
+Two valid attempts per cell is a smoke test. The tasks were chosen before
+checking whether their answers were recoverable without a bundle, and they
+were. The bundle was not clarified: it parked "why are these adapters copied
+per distribution?" as an open question. A curated bundle, and a task whose
+answer isn't in the tree or one log query, are the next things to measure.
+
+In the same session a SkillEvaluator Tier 3 case asked for the bundle
+explicitly. With the skill: pass, 0.81. Without: fail, 0.43, because without
+the skill no OKF bundle can be produced. A second case asked for the feature
+with its interface spelled out. Sonnet 5.5 did not load the skill, and both
+arms passed 18/18 upstream tests. That case is in `integrations/skillevaluator/`.
 
 ## 14. Open follow-ups
 
