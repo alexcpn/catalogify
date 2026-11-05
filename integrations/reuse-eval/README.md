@@ -31,11 +31,15 @@ Neither arm has the catalogify skill installed, so the bundle is the only differ
 ## Run it
 
 ```bash
-python3 integrations/reuse-eval/run.py bundle          # once: build the fixture with the skill
-python3 integrations/reuse-eval/run.py trials -n 3     # both tasks, both arms
-python3 integrations/reuse-eval/run.py retry --run <stamp>   # re-run attempts that hit API errors
-python3 integrations/reuse-eval/run.py summary
+python3 integrations/reuse-eval/run.py bundle  -s dagrun-note          # once: build the fixture with the skill
+python3 integrations/reuse-eval/run.py trials  -s dagrun-note -n 3     # its tasks, both arms
+python3 integrations/reuse-eval/run.py retry   -s dagrun-note --run <stamp>
+python3 integrations/reuse-eval/run.py summary -s dagrun-note
 ```
+
+Scenarios: `metrics` (apache/airflow#70517, feature + "why" tasks) and `dagrun-note`
+(apache/airflow#69403, an implementation plan). Set `REUSE_EVAL_MODEL` to change the model, for
+example `anthropic/claude-haiku-5.5`.
 
 The key is read from `~/.openrouter.key` (override with `REUSE_EVAL_KEY_FILE`) and passed to the
 container through the environment. `ANTHROPIC_BASE_URL` defaults to OpenRouter, and the model to
@@ -78,3 +82,23 @@ What this does not show:
 The first grader for `why` accepted only `337aee896a`. Every valid answer from both arms named
 `0d294caab3`, which is also correct: that commit removed the airflow-core imports from
 `shared/`. The grader now accepts both, and the table above uses it.
+
+## Second result: an implementation plan for a complex feature, 2026-11-05
+
+Scenario `dagrun-note`, on Haiku 5.5 because credit was short; the whole run cost about $0.45.
+The agent plans apache/airflow#69403 from issue #64890. That change crosses the Task SDK runtime,
+the supervisor protocol and its versioned schema, the SDK client and generated models, the core
+Execution API with a Cadwyn version, and the TypeScript SDK. The bundle covers the Execution API
+and the Task SDK runtime (17 concepts, `verify` 0 findings), and it documents every one of those
+parts. Plans are graded on 11 parts of the real change.
+
+| Arm | Attempts | Score (mean, range) | Turns | Input tokens | Seconds |
+| --- | ---: | --- | ---: | ---: | ---: |
+| bundle | 3 | 0.79 (0.73–0.82) | 16.3 | 652,244 | 89 |
+| none | 3 | 0.76 (0.64–0.91) | 17.3 | 642,007 | 93 |
+
+The bundle didn't improve the plans or save tokens. The agent cited it, then explored the code as
+much as it did without it. The parts the bundle documents were missed at about the same rate:
+the supervisor schema version in 2 of 3 plans, and the TypeScript SDK in 3 of 3. Details and
+caveats are in `EXPERIMENTS.md` §13a, including a grader change made after the first scoring and
+applied to both arms.

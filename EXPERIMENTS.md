@@ -14,12 +14,13 @@ repeating to be cited.
 | 2 | Online Boutique | catalogify 0.7.0 | Codex `gpt-5.5` | 21 | 1,600,683 | 8 min 19 s | 0 |
 | 3 | `apache/airflow` | catalogify 0.8.0 | Codex `gpt-5.5` | 17 | 1,207,172 | 6 min 29 s | 0 |
 | 4 | `apache/airflow`, metrics clients | catalogify 0.10.1 | Claude Code, Sonnet 5.5 | 9 | 962,725 | 2 min 38 s | 0 |
+| 5 | `apache/airflow`, Execution API + Task SDK runtime | catalogify 0.10.1 | Claude Code, Haiku 5.5 | 17 | 3,369,260 | 6 min 58 s | 0 |
 
 Findings are `catalogify verify` results on the finished bundle. Run 0 predates
 `verify` and was judged retrospectively. Runs 1 and 2 are the same repository
 and commit, regenerated under a later version.
 
-Detail sections: run 1 in §1–§8, run 2 in §9, run 3 in §11, run 0 in §12, run 4 in §13.
+Detail sections: run 1 in §1–§8, run 2 in §9, run 3 in §11, run 0 in §12, run 4 in §13, run 5 in §13a.
 
 ---
 
@@ -428,6 +429,64 @@ explicitly. With the skill: pass, 0.81. Without: fail, 0.43, because without
 the skill no OKF bundle can be produced. A second case asked for the feature
 with its interface spelled out. Sonnet 5.5 did not load the skill, and both
 arms passed 18/18 upstream tests. That case is in `integrations/skillevaluator/`.
+
+## 13a. Run 5 — does a bundle make an implementation plan cheaper or better?
+
+**Date:** 5 November 2026
+
+Run 4 used tasks that grep and one `git log` could answer. This run uses a
+change whose path a name search doesn't show: apache/airflow#69403, runtime
+DagRun note updates. Upstream touched 16 source files across the Task SDK
+runtime, the supervisor protocol and its versioned schema, the SDK HTTP
+client and generated models, the core Execution API with a Cadwyn version,
+and the generated TypeScript SDK. The task was to write an implementation
+plan from the original issue (#64890), with no code. The hypothesis was that
+the bundle would save the tokens spent exploring.
+
+Credit was short, so Claude Haiku 5.5 did everything: built the bundle and
+wrote every plan. The whole run cost about $0.45.
+
+### The bundle
+
+Scope: `execution_api/` in airflow-core, and `api/` and `execution_time/` in
+task-sdk, at `8d4ab8a94d`, the parent of #69403. 17 concepts, `validate` 0
+errors and 17 W8 warnings, **`verify` 0 findings** and 37 notes. 67 turns,
+6 min 58 s. 3,134,899 cache-read, 163,679 cache-write, 64 fresh and 70,618
+output tokens. The bundle covers Cadwyn versioning, the supervisor message
+protocol, the separately versioned supervisor schema, the generated client
+models and the TypeScript SDK.
+
+### Result
+
+Plans were graded on 11 parts of the real change. The checklist was written
+from the upstream diff before any trial. Upstream's file list scores 11/11
+and the issue text 0/11.
+
+| Arm | Attempts | Score (mean, range) | Turns | Input tokens | Output tokens | Seconds |
+|---|---:|---|---:|---:|---:|---:|
+| bundle | 3 | 0.79 (0.73–0.82) | 16.3 | 652,244 | 17,602 | 89 |
+| none | 3 | 0.76 (0.64–0.91) | 17.3 | 642,007 | 19,289 | 93 |
+
+**No difference in plan quality or in tokens.** All three bundle-arm plans
+cite the bundle. They still missed the parts the bundle documents at about
+the same rate as plans without it: the supervisor schema version in 2 of 3,
+and the TypeScript SDK in 3 of 3. Input tokens were the same, because the
+agent read the bundle and then explored the code anyway.
+
+### Caveats
+
+- Haiku, not Sonnet. A smaller model may use a map differently.
+- Three attempts per arm. The spread within each arm (0.64–0.91) is larger
+  than the gap between them.
+- Two checklist items were widened after the first scoring, for both arms
+  alike. Every plan put the endpoint in `execution_api/routes/dag_runs.py` and
+  the helper in `execution_time/context.py`, which are valid designs that
+  upstream happened not to use. Before widening, the means were 0.64 with the
+  bundle and 0.61 without.
+- The pointer in `AGENTS.md` says "start with the bundle before exploring".
+  It does not say the bundle can be trusted in place of exploring. A
+  different instruction may change the token figures, and that is the next
+  thing to try.
 
 ## 14. Open follow-ups
 

@@ -126,14 +126,20 @@ DAGRUN_NOTE_PLAN = (
 # part of the change. Written from the upstream diff before any trial ran. A plan
 # covers a part when it mentions any of the patterns (case-insensitive).
 DAGRUN_NOTE_PARTS = {
-    "execution_api_route": [r"execution_api/routes/task_instances"],
+    # Widened after the first run: every plan, in both arms, put the endpoint in
+    # execution_api/routes/dag_runs.py and the helper in execution_time/context.py
+    # (plus callback_supervisor.py for callbacks). Those are valid designs, so any
+    # execution-API route file and any of the runtime-context files count.
+    "execution_api_route": [r"execution_api/routes/\w+\.py"],
     "execution_api_datamodel": [r"execution_api/datamodels/taskinstance"],
     "cadwyn_version": [r"execution_api/versions", r"\bcadwyn\b"],
     "sdk_api_client": [r"sdk/api/client\.py"],
     "sdk_generated_models": [r"_generated\.py", r"datamodel-codegen"],
     "supervisor_comms_message": [r"execution_time/comms\.py"],
-    "supervisor_relay": [r"execution_time/supervisor\.py", r"request_handlers\.py"],
-    "runtime_helper": [r"execution_time/task_runner\.py", r"sdk/types\.py"],
+    "supervisor_relay": [r"execution_time/supervisor\.py", r"request_handlers\.py",
+                         r"callback_supervisor\.py"],
+    "runtime_helper": [r"execution_time/task_runner\.py", r"sdk/types\.py",
+                       r"execution_time/context\.py"],
     "supervisor_schema_version": [r"execution_time/schema"],
     "ts_sdk_generated": [r"ts-sdk"],
     "note_without_user": [r"services/public/dag_run", r"user[_ ]id\b.{0,80}(none|null)",
