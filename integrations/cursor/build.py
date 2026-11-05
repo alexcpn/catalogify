@@ -31,6 +31,7 @@ Usage
 import argparse
 import filecmp
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -59,6 +60,11 @@ def build(out):
         raise SystemExit("build: SKILL.md and src/catalogify/_skill_assets/SKILL.md differ")
     if f'version: "{ver}"' not in root_skill.decode():
         raise SystemExit(f"build: SKILL.md metadata.version is not {ver} (pyproject.toml)")
+    # The uvx fallback is written with a literal version, because skill scanners
+    # (NVIDIA SkillSpector RP1) treat `uvx pkg@<placeholder>` as unpinned.
+    pins = set(re.findall(r"uvx catalogify@(\S+?)[\s`]", root_skill.decode()))
+    if pins - {ver}:
+        raise SystemExit(f"build: SKILL.md pins uvx catalogify@{sorted(pins - {ver})}, expected {ver}")
 
     if out.exists():
         shutil.rmtree(out)
