@@ -168,7 +168,54 @@ DAGRUN_NOTE_PARTS = {
                           r"(without|no) (a )?user attribution"],
 }
 
+# mitmproxy#7910 (merge 9e22acffcb): make the TCP inactivity timeout an option.
+# Written as a request, from the PR description; there is no issue.
+TCP_TIMEOUT_REQUEST = """\
+> mitmproxy uses a hardcoded TCP inactivity timeout of 10 minutes (600 seconds) for all TCP
+> connections. Some networks need a shorter or longer timeout. Please make it configurable
+> through a new `tcp_timeout` option, in seconds, keeping 600 as the default so nothing changes
+> for existing users.
+"""
+
+TCP_TIMEOUT_PLAN = (
+    "You are working in a checkout of mitmproxy. A user asked for this:\n\n" + TCP_TIMEOUT_REQUEST
+    + "\nWrite an implementation plan for a maintainer to follow: every file that has to change or "
+    "be created, and what changes in each, in the order the work should be done. Use repository-"
+    "relative paths. Include generated files and anything the project requires alongside a "
+    "change. Do not write the code and do not change any files; reply with the plan only.\n\n"
+    "Work only from this checkout: do not fetch from the remote or look up the upstream change."
+)
+
+# What mitmproxy#7910 changed, written from the upstream diff before any trial.
+TCP_TIMEOUT_PARTS = {
+    # Widened after the first scoring, for both arms: mitmproxy also declares
+    # options in an addon's load() via loader.add_option (the proxyserver addon
+    # holds many proxy options), which every no-bundle plan chose.
+    "option_declared": [r"mitmproxy/options\.py", r"add_option"],
+    "timeout_used_in_server": [r"mitmproxy/proxy/server\.py"],
+    "generated_web_options": [r"_options_gen\.ts", r"web/gen/options_js\.py", r"options_js"],
+    "changelog_entry": [r"changelog\.md"],
+    "test_added": [r"test/mitmproxy/\S+\.py"],
+}
+
 SCENARIOS = {
+    "mitmproxy-tcp-timeout": {
+        "repo": "https://github.com/mitmproxy/mitmproxy.git",
+        "base": "181dfb000bbd28ebcb7f6a603cf5c57af7ddc7ba",      # parent of mitmproxy#7910
+        "upstream": "9e22acffcb5a4888fde571267e7125b1b69a9e80",
+        "fixture": "mitmproxy-options-knowledge",
+        "parts": TCP_TIMEOUT_PARTS,
+        "pointer": pointer("mitmproxy's option system and proxy core"),
+        "find_pointer": find_pointer("mitmproxy's option system and proxy core (mitmproxy/options.py, "
+                                     "optmanager.py, proxy/, tools/ and web/gen/)"),
+        "bundle_prompt": bundle_prompt(
+            "mitmproxy's option system and proxy core, in this checkout: how options are declared, "
+            "managed and exposed on the command line and in the web UI, and the proxy server that "
+            "uses them. Scope it to `mitmproxy/options.py`, `mitmproxy/optmanager.py`, "
+            "`mitmproxy/proxy/`, `mitmproxy/tools/` and `web/gen/`. Include the typed relations, "
+            "playbooks and guardrails the generate workflow describes."),
+        "tasks": {"plan": TCP_TIMEOUT_PLAN},
+    },
     "metrics": {
         "base": "f44bb16d825edcb533b5819c152c4d6a23a0ffd9",
         "upstream": "b03e48a875d991ad42b9d81efb7e75e001879404",
@@ -239,6 +286,12 @@ def build_wheel() -> None:
 def build_images(scn: str) -> None:
     base, image = images(scn)
     build_wheel()
+    cfg = SCENARIOS[scn]
+    if cfg.get("repo"):
+        subprocess.run(["docker", "build", "-q", "-t", image, "-f", str(HERE / "Dockerfile.repo"),
+                        "--build-arg", f"REPO_URL={cfg['repo']}", "--build-arg", f"BASE={cfg['base']}",
+                        str(HERE)], check=True, stdout=subprocess.DEVNULL)
+        return
     subprocess.run(["docker", "build", "-q", "-t", base, "--build-arg",
                     f"AIRFLOW_BASE={SCENARIOS[scn]['base']}", str(ENV_DIR)],
                    check=True, stdout=subprocess.DEVNULL)
@@ -264,7 +317,7 @@ def agent_env() -> dict[str, str]:
 
 CONTAINER_SCRIPT = r"""
 set -u
-cd /workspace/airflow
+cd "$WORKDIR"
 if [ "$ARM" = bundle ] || [ "$ARM" = bundle-trust ] || [ "$ARM" = bundle-find ]; then
   cp -R /eval/fixture knowledge
   cat /eval/pointer.md >> AGENTS.md
@@ -312,7 +365,9 @@ def run_container(scn: str, task: str, arm: str, prompt: str, out: Path) -> None
                "-e", "ANTHROPIC_DEFAULT_HAIKU_MODEL", "-e", "ANTHROPIC_SMALL_FAST_MODEL",
                "-e", "CLAUDE_CODE_MAX_OUTPUT_TOKENS",
                "-e", f"MODEL={MODEL}", "-e", f"ARM={arm}", "-e", f"TASK={task}",
-               "-e", f"UPSTREAM_SHA={cfg['upstream']}", image, "bash", "/eval/run.sh"]
+               "-e", f"UPSTREAM_SHA={cfg['upstream']}",
+               "-e", f"WORKDIR={'/workspace/repo' if cfg.get('repo') else '/workspace/airflow'}",
+               image, "bash", "/eval/run.sh"]
         subprocess.run(cmd, env=agent_env(), timeout=3600, check=False,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # files written as root inside the container; make them readable/removable here
@@ -333,13 +388,13 @@ def grade_why(answer: str) -> dict[str, float]:
     }
 
 
-def grade_plan(plan: str) -> dict[str, float]:
+def grade_plan(plan: str, parts: dict | None = None) -> dict[str, float]:
     text = plan.lower()
     return {part: 1.0 if any(re.search(p, text) for p in pats) else 0.0
-            for part, pats in DAGRUN_NOTE_PARTS.items()}
+            for part, pats in (parts or DAGRUN_NOTE_PARTS).items()}
 
 
-def collect(out: Path, task: str) -> dict:
+def collect(out: Path, task: str, parts: dict | None = None) -> dict:
     rec: dict = {"dir": str(out.relative_to(HERE))}
     try:
         res = json.loads((out / "claude.json").read_text())
@@ -371,7 +426,7 @@ def collect(out: Path, task: str) -> dict:
         except (OSError, json.JSONDecodeError, KeyError):
             rec["score"] = 0.0
     else:
-        m = grade_plan(answer) if task == "plan" else grade_why(answer)
+        m = grade_plan(answer, parts) if task == "plan" else grade_why(answer)
         rec["score"] = sum(m.values()) / len(m)
         rec["missed"] = [k for k, v in m.items() if not v]
         rec["answer_chars"] = len(answer)
@@ -426,7 +481,7 @@ def cmd_trials(args: argparse.Namespace) -> None:
         task, arm, i = job
         out = RESULTS / args.scenario / stamp / task / arm / f"attempt-{i}"
         run_container(args.scenario, task, arm, cfg["tasks"][task], out)
-        rec = collect(out, task)
+        rec = collect(out, task, cfg.get("parts"))
         report(task, arm, i, rec)
         return rec
 
@@ -443,12 +498,12 @@ def cmd_retry(args: argparse.Namespace) -> None:
     for rec_path in sorted(run.glob("*/*/attempt-*/record.json")):
         out = rec_path.parent
         task, arm, i = out.parent.parent.name, out.parent.name, int(out.name.split("-")[1])
-        if collect(out, task).get("error"):
+        if collect(out, task, cfg.get("parts")).get("error"):
             for f in out.iterdir():
                 if f.is_file():
                     f.unlink()
             run_container(args.scenario, task, arm, cfg["tasks"][task], out)
-            report(task, arm, i, collect(out, task))
+            report(task, arm, i, collect(out, task, cfg.get("parts")))
     cmd_summary(argparse.Namespace(scenario=args.scenario, run=args.run))
 
 
@@ -467,7 +522,8 @@ def cmd_summary(args: argparse.Namespace) -> None:
     for task_dir in sorted(p for p in run.iterdir() if p.is_dir()):
         for arm in ARMS:
             # Re-grade from the raw outputs so grader fixes apply to earlier runs.
-            recs = [collect(p, task_dir.name) for p in sorted((task_dir / arm).glob("attempt-*"))]
+            recs = [collect(p, task_dir.name, SCENARIOS[args.scenario].get("parts"))
+                    for p in sorted((task_dir / arm).glob("attempt-*"))]
             errors = sum(1 for r in recs if r.get("error"))
             recs = [r for r in recs if not r.get("error")]
             if not recs:

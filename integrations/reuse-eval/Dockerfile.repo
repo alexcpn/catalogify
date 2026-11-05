@@ -1,0 +1,31 @@
+# A generic reuse-eval image: any repository at one commit, with full
+# (blob-less) history for catalogify, plus Claude Code and this branch's
+# catalogify. The Airflow scenarios use ./Dockerfile instead, which also
+# installs a test environment for the feature task.
+FROM python:3.12-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir uv==0.6.16
+
+ARG REPO_URL
+ARG BASE
+RUN git init -q /workspace/repo \
+ && cd /workspace/repo \
+ && git remote add origin "$REPO_URL" \
+ && git fetch -q --filter=blob:none origin "$BASE" \
+ && git checkout -q -b main FETCH_HEAD \
+ && git config user.name "eval" \
+ && git config user.email "eval@example.invalid"
+
+ARG CLAUDE_CODE_VERSION=2.1.318
+RUN curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_CODE_VERSION}" \
+ && /root/.local/bin/claude --version
+ENV PATH="/root/.local/bin:${PATH}" \
+    IS_SANDBOX=1 \
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+COPY wheel/ /tmp/catalogify-wheel/
+RUN pip install --no-cache-dir /tmp/catalogify-wheel/*.whl && catalogify --version
+WORKDIR /workspace/repo

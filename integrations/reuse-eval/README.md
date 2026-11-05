@@ -118,3 +118,11 @@ tokens: no better than without a bundle, at 56% more tokens. The agents did use 
 playbook. But the generated playbook left out two partners that `cochange` ranks high (the
 TypeScript SDK and the supervisor schema), so every plan still missed the TypeScript SDK. Details
 in `EXPERIMENTS.md` §13b.
+
+## Fourth result: mitmproxy, which doesn't document its procedures, 2026-11-05
+
+Scenario `mitmproxy-tcp-timeout` (mitmproxy#7910, a new `tcp_timeout` option), Haiku 5.5. The
+typed bundle with `find` scored 1.00 (3/3) against 0.93 without (one plan left out the generated
+`_options_gen.ts`), at the same input tokens (244k against 240k). It's the first result in the
+bundle's favour, and too small to count: three attempts per arm, and a gap of one plan. Details in
+`EXPERIMENTS.md` §13c.

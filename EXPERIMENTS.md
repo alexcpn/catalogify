@@ -15,12 +15,13 @@ repeating to be cited.
 | 3 | `apache/airflow` | catalogify 0.8.0 | Codex `gpt-5.5` | 17 | 1,207,172 | 6 min 29 s | 0 |
 | 4 | `apache/airflow`, metrics clients | catalogify 0.10.1 | Claude Code, Sonnet 5.5 | 9 | 962,725 | 2 min 38 s | 0 |
 | 5 | `apache/airflow`, Execution API + Task SDK runtime | catalogify 0.10.1 | Claude Code, Haiku 5.5 | 17 | 3,369,260 | 6 min 58 s | 0 |
+| 7 | `mitmproxy/mitmproxy`, options + proxy core | catalogify 0.11.0 | Claude Code, Haiku 5.5 | 14 | 3,524,660 | 6 min 4 s | 0 |
 
 Findings are `catalogify verify` results on the finished bundle. Run 0 predates
 `verify` and was judged retrospectively. Runs 1 and 2 are the same repository
 and commit, regenerated under a later version.
 
-Detail sections: run 1 in §1–§8, run 2 in §9, run 3 in §11, run 0 in §12, run 4 in §13, run 5 in §13a.
+Detail sections: run 1 in §1–§8, run 2 in §9, run 3 in §11, run 0 in §12, run 4 in §13, run 5 in §13a, run 6 in §13b, run 7 in §13c.
 
 ---
 
@@ -555,6 +556,46 @@ What this points to: a playbook's completeness can't be left to the
 generating agent. `cochange` already knows the partner set, so verify can
 check it deterministically: a note when a high-lift partner of a playbook's
 `applies_to` is missing from its `requires`.
+
+## 13c. Run 7 — a repository that doesn't document its procedures
+
+**Date:** 5 November 2026
+
+Airflow documents its Execution API procedure in its own `AGENTS.md`, so an
+agent without a bundle could read it (§13b). mitmproxy doesn't: its
+`AGENTS.md` only says how to run tests. The task is to plan mitmproxy#7910,
+which makes the TCP inactivity timeout a `tcp_timeout` option. Upstream
+changed five places. Two of them nothing in the repository's docs mentions:
+regenerating `web/src/js/ducks/_options_gen.ts` from `web/gen/options_js.py`,
+and the `CHANGELOG.md` entry. `cochange` shows the first at lift 10.7 against
+`mitmproxy/options.py`.
+
+Haiku 5.5 built the bundle with catalogify 0.11.0: options, optmanager,
+proxy core, tools and web/gen, 14 concepts, one Playbook ("add an option")
+and one Guardrail. `validate` reported 0 errors and `verify` 0 findings, in
+62 turns and 6 min 4 s. Plans were graded on the five parts.
+
+| Arm | Attempts | Score (mean, range) | Turns | Input tokens | Seconds |
+|---|---:|---|---:|---:|---:|
+| none | 3 | 0.93 (0.80–1.00) | 10.0 | 240,318 | 42 |
+| typed bundle + `find` | 3 | 1.00 (1.00–1.00) | 10.3 | 243,602 | 45 |
+
+**The first result in the bundle's favour, but small.** One no-bundle plan
+left out the generated web options; every plan that used `find` included
+them. Input tokens were the same, unlike Airflow, where `find` added 56%. All
+three bundle-arm plans name the playbook.
+
+Caveats:
+- Three attempts per arm, and the gap is one plan. That is not a
+  measurement.
+- One checklist item was widened after the first scoring, for both arms.
+  Every no-bundle plan declared the option with `loader.add_option` in the
+  proxyserver addon instead of `mitmproxy/options.py`, which is a valid
+  mitmproxy pattern. Before widening, the scores were 0.73 against 0.93.
+- The prompt asks for generated files, which helps both arms find
+  `_options_gen.ts`.
+- At about $0.01 a plan on Haiku, ten more attempts per arm cost about
+  $0.25, and that would make this a measurement.
 
 ## 14. Open follow-ups
 
