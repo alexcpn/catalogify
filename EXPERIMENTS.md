@@ -575,27 +575,35 @@ proxy core, tools and web/gen, 14 concepts, one Playbook ("add an option")
 and one Guardrail. `validate` reported 0 errors and `verify` 0 findings, in
 62 turns and 6 min 4 s. Plans were graded on the five parts.
 
-| Arm | Attempts | Score (mean, range) | Turns | Input tokens | Seconds |
-|---|---:|---|---:|---:|---:|
-| none | 3 | 0.93 (0.80–1.00) | 10.0 | 240,318 | 42 |
-| typed bundle + `find` | 3 | 1.00 (1.00–1.00) | 10.3 | 243,602 | 45 |
+The first round had three attempts per arm. Ten more per arm followed, with
+the same image, bundle, prompt and grader. Combined:
 
-**The first result in the bundle's favour, but small.** One no-bundle plan
-left out the generated web options; every plan that used `find` included
-them. Input tokens were the same, unlike Airflow, where `find` added 56%. All
-three bundle-arm plans name the playbook.
+| Arm | Attempts | Perfect plans | Score (mean) | Turns | Input tokens (mean) |
+|---|---:|---:|---:|---:|---:|
+| none | 13 | 10 | 0.954 | 11.3 | 269,746 |
+| typed bundle + `find` | 13 | **13** | **1.000** | 10.5 | 245,946 |
+
+**The first result in the bundle's favour.** Every plan that used `find` was
+complete. Without a bundle, two plans left out regenerating
+`_options_gen.ts`, and one didn't declare the option at all. Input tokens
+were 9% lower with the bundle, where on Airflow `find` added 56%. Every
+bundle-arm plan names the playbook.
+
+How strong this is: three failures out of 26 plans, all in the no-bundle arm.
+The chance of that split happening by luck alone is 0.11 (one-sided Fisher
+exact), so it is suggestive, not significant. The token difference is within
+the spread of either arm.
 
 Caveats:
-- Three attempts per arm, and the gap is one plan. That is not a
-  measurement.
 - One checklist item was widened after the first scoring, for both arms.
   Every no-bundle plan declared the option with `loader.add_option` in the
   proxyserver addon instead of `mitmproxy/options.py`, which is a valid
   mitmproxy pattern. Before widening, the scores were 0.73 against 0.93.
 - The prompt asks for generated files, which helps both arms find
   `_options_gen.ts`.
-- At about $0.01 a plan on Haiku, ten more attempts per arm cost about
-  $0.25, and that would make this a measurement.
+- One task, one repository, one model. The gap is the knowledge an
+  undocumented repository hides, which is where a bundle should help; it says
+  nothing about repositories that already document their procedures (§13b).
 
 ## 14. Open follow-ups
 
