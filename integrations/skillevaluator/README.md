@@ -30,7 +30,11 @@ usual. The custom metrics appear next to them with their own lift.
 
 ## Run it
 
-Needs Docker and SkillEvaluator with the Tier 3 extra:
+Needs Docker with Compose 5.0.2 or later (`docker compose version`). SkillEvaluator adds
+`HEALTHCHECK NONE` to every task image, and Harbor starts containers with `up --wait`. Older
+Compose releases, 2.29 for example, fail that pair with "container ... has no healthcheck
+configured" ([docker/compose#13522](https://github.com/docker/compose/issues/13522)). Then install
+SkillEvaluator with the Tier 3 extra:
 
 ```bash
 uv tool install --python 3.13 "skillevaluator[llm,tier3] @ git+https://github.com/NVIDIA/SkillEvaluator.git"
