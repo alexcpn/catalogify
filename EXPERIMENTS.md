@@ -514,6 +514,48 @@ or two concepts the task touches. Nothing in the bundle or the pointer makes
 it do that.
 
 
+## 13b. Run 6 — typed bundle reached through `catalogify find`
+
+**Date:** 5 November 2026
+
+The same task as §13a (plan apache/airflow#69403 from issue #64890), with the
+ontology layer from catalogify 0.11.0. Haiku 5.5 rebuilt the Execution API
+bundle with typed relations, one Playbook ("Add a field or endpoint to the
+Execution API") and one Guardrail ("task code never touches the metadata
+DB"). `validate` reported 0 errors and `verify` 0 findings. The trial arm's
+`AGENTS.md` pointer says not to read the bundle, and to run
+`catalogify find <file>` on each file the plan changes before finalizing.
+Three attempts; the `none` and `bundle` arms of §13a are the baseline. The
+whole run, bundle included, cost about $0.50 on OpenRouter.
+
+| Arm | Score (mean, range) | Turns | Input tokens |
+|---|---|---:|---:|
+| none (§13a) | 0.76 (0.64–0.91) | 17.3 | 642,007 |
+| bundle, "start here" (§13a) | 0.79 (0.73–0.82) | 16.3 | 652,244 |
+| bundle, "plan from it" (§13a) | 0.79 (0.73–0.91) | 25.7 | 1,430,409 |
+| **typed bundle + `find`** | 0.76 (0.73–0.82) | 23.0 | 1,002,154 |
+
+**No improvement, and 56% more input tokens than without a bundle.** The
+TypeScript SDK was still missed in 3 of 3 plans.
+
+The agents did use the layer. All three plans refer to `catalogify find` and
+the playbook, and the supervisor-schema step now appears in 2 of 3 plans. The
+playbook was the weak link. Its `requires` lists the version file and
+`_generated.py`, but not `ts-sdk/src/generated` or
+`execution_time/schema`, though `cochange` shows both with lift 89 and
+143, above the support-3, lift-5 bar the generate workflow sets. The agent
+following the playbook planned what the playbook said.
+
+The baseline was also less ignorant than it looked. The playbook's steps cite
+Airflow's own `execution_api/AGENTS.md` ("Adding a New Feature End-to-End").
+The repository already documents most of this procedure, and agents without a
+bundle can read it.
+
+What this points to: a playbook's completeness can't be left to the
+generating agent. `cochange` already knows the partner set, so verify can
+check it deterministically: a note when a high-lift partner of a playbook's
+`applies_to` is missing from its `requires`.
+
 ## 14. Open follow-ups
 
 1. ~~Re-run generation under catalogify 0.7.0 and compare finding counts.~~

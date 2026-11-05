@@ -108,3 +108,13 @@ says the bundle is verified, tells the agent to plan from it, and to open code o
 path. That arm scored the same (0.79, range 0.73–0.91), but used 25.7 turns and 1,430,409 input
 tokens on average, more than twice either other arm. Reading the bundle wholesale costs more than
 it saves. See `EXPERIMENTS.md` §13a.
+
+## Third result: the typed bundle through `catalogify find`, 2026-11-05
+
+Scenario `dagrun-note-v2`, Haiku 5.5. catalogify 0.11.0 rebuilt the bundle with typed relations, one
+playbook and one guardrail, and the `bundle-find` arm's pointer sends the agent to
+`catalogify find` instead of the bundle. Score 0.76 (0.73–0.82), 23.0 turns, 1,002,154 input
+tokens: no better than without a bundle, at 56% more tokens. The agents did use `find` and the
+playbook. But the generated playbook left out two partners that `cochange` ranks high (the
+TypeScript SDK and the supervisor schema), so every plan still missed the TypeScript SDK. Details
+in `EXPERIMENTS.md` §13b.
