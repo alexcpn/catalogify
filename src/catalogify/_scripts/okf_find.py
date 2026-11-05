@@ -156,7 +156,9 @@ def main():
     concepts = walk(bundle)
     results = []
     for p in args.paths:
-        query = os.path.relpath(os.path.abspath(p), root) if os.path.exists(p) else p
+        # Relative to the cwd like any CLI path, whether or not it exists yet: a
+        # file about to be created, or one just deleted, still has guardrails.
+        query = os.path.normpath(os.path.relpath(os.path.abspath(p), root))
         results.append(lookup(query.rstrip("/"), concepts, args.max, args.steps_chars))
 
     if args.json:

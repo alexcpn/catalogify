@@ -481,7 +481,9 @@ catalogify cochange <the concept's source dirs> --evidence 5 --json
 ```
 
 Write a relation only for a partner with real support (3+ commits) and high
-lift (5+). Copy the commit SHAs from the `commits` list, and pick the most
+lift (5+). Copy the commit SHAs from the `commits` list exactly; quote one
+that happens to be all digits (`"1234567"`), because YAML would read it as a
+number. Never cite a branch name or `HEAD~n`. Pick the most
 specific kind that the code itself confirms: open the target and check that it
 is generated, or versioned, before you write that. If you can't tell, write
 `changes_with`. Test-only partners are not relations.

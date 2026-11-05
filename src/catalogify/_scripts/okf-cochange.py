@@ -126,7 +126,7 @@ def main():
         for i, a in enumerate(ordered):
             for b in ordered[i + 1:]:
                 pair_commits[(a, b)] += 1
-                if len(pair_shas[(a, b)]) < args.evidence:
+                if args.evidence and len(pair_shas[(a, b)]) < args.evidence:
                     pair_shas[(a, b)].append(sha[:10])
 
     considered = scanned - skipped

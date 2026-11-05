@@ -370,3 +370,132 @@ def test_scripts_import_their_sibling_from_any_cwd(repo, tmp_path):
     code, out, err = run([sys.executable, str(SCRIPTS / "okf_find.py"), "--bundle", str(b),
                           "--repo-root", str(r.root), "src/api/models.py"], tmp_path)
     assert code == 0, err
+
+
+# --- regressions from code review ------------------------------------------------
+
+def _models(r, evidence_yaml, target="versions/v2.py", kind="versioned_by", sources="[src/api/models.py]"):
+    concept(r, "modules/api-models.md", f"""
+type: Module
+title: API models
+description: The order model.
+source_files: {sources}
+relations:
+  - {{kind: {kind}, target: {target}, evidence: {evidence_yaml}}}
+""")
+
+
+def test_invented_sha_cannot_hide_behind_a_real_one(repo):
+    r, c, b = repo
+    _models(r, f"[{c['c2']}, deadbeefdeadbeef]")
+    _, res = verified(b)
+    assert any(f.startswith("V1 modules/api-models.md") and "deadbeefdeadbeef" in f
+               for f in res["findings"]), res
+
+
+def test_branch_name_is_not_evidence(repo):
+    r, c, b = repo
+    _models(r, "[main]")
+    _, res = verified(b)
+    assert any(f.startswith("V9 modules/api-models.md") and "'main'" in f for f in res["findings"]), res
+    assert any(f.startswith("V11 modules/api-models.md") for f in res["findings"]), res
+
+
+def test_unquoted_all_digit_sha_is_flagged_not_misread(repo):
+    r, c, b = repo
+    _models(r, "[0123456]")          # YAML 1.1 reads this as the octal int 42798
+    _, res = verified(b)
+    assert any(f.startswith("V9 modules/api-models.md") and "quoted" in f for f in res["findings"]), res
+    assert not any("42798" in f and f.startswith("V1") for f in res["findings"]), res
+
+
+def test_one_file_cannot_back_both_ends(repo):
+    r, c, b = repo
+    # source_files [src/] contains the target src/api/; c4 touched src/api/ files only
+    # on the target side, plus config/ and tests/, which are not under src/.
+    _models(r, f"[{c['c4']}]", target="src/api", kind="changes_with", sources="[src/]")
+    _, res = verified(b)
+    assert any(f.startswith("V11 modules/api-models.md") for f in res["findings"]), res
+
+
+def test_reads_config_needs_a_file_name_not_a_word(repo):
+    r, c, b = repo
+    concept(r, "modules/settings.md", """
+type: Module
+title: Settings reader
+description: Reads the settings file.
+source_files: [src/api/settings_reader.py]
+relations:
+  - {kind: reads_config, target: config}
+""")
+    _, res = verified(b)
+    assert any(f.startswith("V11 modules/settings.md") for f in res["findings"]), res
+
+
+def test_calls_needs_a_qualified_import(repo):
+    r, c, b = repo
+    r.write("lib/utils.py", "X = 1\n")
+    r.write("src/api/uses_myutils.py", "import myutils\n")
+    r.commit("Add utils and a module importing a different utils", "lib/utils.py",
+             "src/api/uses_myutils.py")
+    concept(r, "modules/myutils-user.md", """
+type: Module
+title: myutils user
+description: Imports myutils, not lib/utils.
+source_files: [src/api/uses_myutils.py]
+relations:
+  - {kind: calls, target: lib/utils.py}
+""")
+    _, res = verified(b)
+    assert any(f.startswith("V11 modules/myutils-user.md") for f in res["findings"]), res
+
+
+def test_playbook_prose_citation_is_checked_against_applies_to(repo):
+    r, c, b = repo
+    r.write("docs/notes.md", "notes\n")
+    off = r.commit("Docs only", "docs/notes.md")
+    concept(r, "operations/playbooks/add-model-field.md", f"""
+type: Playbook
+title: Add a field to a model
+description: What else moves when a model gains a field.
+applies_to: [src/api/models.py]
+relations:
+  - {{kind: requires, target: versions/, evidence: [{c['c2']}]}}
+""", f"# Steps\n\n1. Edit the model, as in `{off}`.\n")
+    _, res = verified(b)
+    assert any(f.startswith("V2 operations/playbooks/add-model-field.md") and "applies_to" in f
+               for f in res["findings"]), res
+
+
+def test_find_normalises_paths_that_do_not_exist(repo):
+    r, c, b = repo
+    (res,) = find(r, "./src/api/new_module.py")
+    assert [g["title"] for g in res["guardrails"]] == ["No shell execution in the API"]
+
+
+def test_find_relative_to_a_subdirectory_cwd(repo):
+    r, c, b = repo
+    code, out, err = run([sys.executable, str(SCRIPTS / "okf_find.py"), "models.py", "--json"],
+                         Path(r.root) / "src" / "api")
+    assert code == 0, err
+    (res,) = json.loads(out)["results"]
+    assert res["path"] == "src/api/models.py"
+    assert [x["title"] for x in res["concepts"]] == ["API models"]
+
+
+def test_runner_supplies_the_sibling_module_from_a_zip(repo, tmp_path, monkeypatch, capfd):
+    """A non-filesystem loader gives Traversables, not Paths; okf_bundle must travel along."""
+    import zipfile
+    from catalogify import runner
+    r, c, b = repo
+    archive = tmp_path / "scripts.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        for f in SCRIPTS.iterdir():
+            if f.suffix in (".py", ".sh"):
+                z.write(f, f"_scripts/{f.name}")
+    monkeypatch.setattr(runner, "files", lambda _pkg: zipfile.Path(archive, "_scripts/"))
+    monkeypatch.chdir(r.root)
+    code = runner.find(["src/api/models.py"])
+    out = capfd.readouterr().out
+    assert code == 0
+    assert "GUARDRAIL" in out

@@ -27,12 +27,15 @@ Findings (a claim is unsupported):
 Ontology layer (typed relations, playbooks, guardrails; see okf_bundle.py):
   V9  A relation is malformed, uses a kind outside the fixed vocabulary
       (changes_with, generated_from, versioned_by, calls, reads_config,
-      requires), or uses `requires` outside a Playbook.
+      requires), uses `requires` outside a Playbook, or cites evidence that
+      is not a commit SHA (a branch name, a revision, an unquoted number).
   V10 A relation target or an `applies_to` path is not tracked by git.
   V11 A relation is unsupported: none of its `evidence` commits touches
       both ends (the concept's source_files, or a Playbook/Guardrail's
-      applies_to, and the target). `calls` may instead be backed by an
-      import, `reads_config` by a reference to the target's file name.
+      applies_to, and the target), with a different file on each side.
+      `calls` may instead be backed by a qualified import of the target,
+      `reads_config` by a mention of the target's file name (with its
+      extension). Every evidence SHA is checked, not just the first.
   V13 A Guardrail is violated or unfounded: a `forbids` pattern occurs in
       non-test code, a `motivated_by` commit touches none of applies_to,
       or an `enforced_by` file is not tracked.
@@ -67,8 +70,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from okf_bundle import (  # noqa: E402  (sibling module, shared with okf_find.py)
-    GUARDRAIL, HAVE_YAML, PLAYBOOK, RELATION_KINDS, concept_type, forbids,
-    relations, sections, str_list, under, walk,
+    GUARDRAIL, HAVE_YAML, PLAYBOOK, RELATION_KINDS, SHA as SHA_HEX, as_list, concept_type,
+    forbids, relations, sections, str_list, under, walk,
 )
 # Backtick-quoted hex token: how generate.md tells the agent to cite a commit.
 SHA_TOKEN = re.compile(r"`([0-9a-f]{7,40})`")
@@ -185,14 +188,6 @@ class Repo:
     def has_go(self, paths):
         code, out = self._git(["ls-files", "--", *[f"{p}/*.go" if not p.endswith(".go") else p for p in paths]])
         return code == 0 and bool(out.strip())
-
-
-# --- parsing ---------------------------------------------------------------
-
-
-
-
-
 
 
 def table_first_column(text):
@@ -329,6 +324,11 @@ def verify_concept(rel, data, body, bundle_rel, repo_root, repo, concept_sources
 
     secs = sections(body)
     gotchas = next((v for k, v in secs.items() if k.startswith("gotcha")), "")
+    # A Playbook or Guardrail usually has no source_files; what it is about is
+    # its applies_to, so prose citations are checked against that instead.
+    anchors = paths
+    if not anchors and concept_type(data) in (PLAYBOOK, GUARDRAIL):
+        anchors = [a.rstrip("/") for a in str_list(data.get("applies_to")) if repo.tracked(a.rstrip("/"))]
 
     # --- V1/V2/V3: every cited commit must exist, be relevant, and be real code.
     cited = []
@@ -345,9 +345,10 @@ def verify_concept(rel, data, body, bundle_rel, repo_root, repo, concept_sources
         if files is None:
             findings.append(f"V1 {rel}: cited commit `{sha}` does not exist in this repository")
             continue
-        if paths and not any(under(f, p) for f in files for p in paths):
+        if anchors and not any(under(f, p) for f in files for p in anchors):
             findings.append(
-                f"V2 {rel}: cited commit `{sha}` touches none of this concept's source_files "
+                f"V2 {rel}: cited commit `{sha}` touches none of this concept's "
+                f"{'source_files' if paths else 'applies_to'} "
                 f"— it belongs to another concept"
             )
         if files and all(TEST_FILE.search(f) for f in files):
@@ -421,14 +422,53 @@ def verify_concept(rel, data, body, bundle_rel, repo_root, repo, concept_sources
 
 # --- ontology layer: relations, playbooks, guardrails ------------------------
 
-def commit_links(repo, sha, ends, target, rel):
-    """True when commit `sha` touched one of `ends` and `target`; V1 when it is no commit."""
-    files = repo.commit_files(sha)
-    if files is None:
-        findings.append(f"V1 {rel}: cited commit `{sha}` does not exist in this repository")
-        return False
-    return (any(under(f, e) for f in files for e in ends)
-            and any(under(f, target) for f in files))
+def commit_links(files, ends, target):
+    """True when a commit's `files` include one under `ends` AND a different one under `target`.
+
+    A file inside both (a target nested in the concept's own source tree) is
+    counted only on the target side, so one file can never back both ends of
+    a relation by itself.
+    """
+    in_target = [f for f in files if under(f, target)]
+    in_ends = [f for f in files if any(under(f, e) for e in ends) and not under(f, target)]
+    return bool(in_target) and bool(in_ends)
+
+
+# A bare word on the import side ("utils") would match `import myutils`; only
+# qualified forms ("lib/utils", "lib.utils") count, and only as whole tokens.
+def import_backs(target, import_blob):
+    for needle in import_needles(target):
+        if "/" not in needle and "." not in needle:
+            continue
+        if re.search(r"(?<![\w.])" + re.escape(needle) + r"(?![\w])", import_blob):
+            return True
+    return False
+
+
+def evidence_commits(rel, label, values, repo):
+    """{sha: files} for valid, existing evidence; V9 for non-SHA values, V1 for unknown commits.
+
+    Every value is checked, so an invented SHA cannot hide behind a real one.
+    Branch names and revision expressions (`main`, `HEAD~3`) are rejected: they
+    resolve to a different commit tomorrow, which is not a citation.
+    """
+    out = {}
+    for v in values:
+        if isinstance(v, bool) or not isinstance(v, str):
+            findings.append(f"V9 {rel}: {label} value {v!r} is not a quoted commit SHA — YAML reads "
+                            f"bare all-digit SHAs as numbers; write it as a string")
+            continue
+        sha = v.strip().lower()
+        if not SHA_HEX.match(sha):
+            findings.append(f"V9 {rel}: {label} value '{v}' is not a commit SHA (7-40 hex digits); "
+                            f"branch names and revisions are not evidence")
+            continue
+        files = repo.commit_files(sha)
+        if files is None:
+            findings.append(f"V1 {rel}: cited commit `{sha}` does not exist in this repository")
+            continue
+        out[sha] = files
+    return out
 
 
 def verify_ontology(rel, data, secs, paths, bundle_rel, repo):
@@ -451,7 +491,7 @@ def verify_ontology(rel, data, secs, paths, bundle_rel, repo):
     for problem in problems:
         findings.append(f"V9 {rel}: malformed relation — {problem}")
     for r in rels:
-        kind, target, evidence = r["kind"], r["target"], r["evidence"]
+        kind, target, evidence = r["kind"], r["target"], r["raw_evidence"]
         if kind not in RELATION_KINDS:
             findings.append(f"V9 {rel}: relation kind '{kind}' is not one of "
                             f"{', '.join(sorted(RELATION_KINDS))}")
@@ -466,12 +506,17 @@ def verify_ontology(rel, data, secs, paths, bundle_rel, repo):
             findings.append(f"V11 {rel}: {kind} -> {target} has nothing to anchor it — the concept "
                             f"has no tracked source_files{' or applies_to' if ctype in (PLAYBOOK, GUARDRAIL) else ''}")
             continue
-        backed = any(commit_links(repo, sha, ends, target, rel) for sha in evidence)
+        commits = evidence_commits(rel, f"{kind} -> {target} evidence", evidence, repo)
+        backed = any(commit_links(files, ends, target) for files in commits.values())
         if not backed and kind == "calls":
-            backed = any(n in repo.import_lines(ends) for n in import_needles(target))
+            backed = import_backs(target, repo.import_lines(ends))
         if not backed and kind == "reads_config":
+            # Only a file name with an extension is specific enough to grep for:
+            # `config` or `settings` as a bare word matches half the code base.
             name = os.path.basename(target)
-            backed = bool(name) and bool(repo.grep_files(name, ends, word=False))
+            backed = ("." in name.strip(".") and
+                      bool([h for h in repo.grep_files(name, ends, word=False)
+                            if not under(h, target)]))
         if not backed:
             why = ("no cited commit touches both ends" if evidence else "it cites no evidence")
             findings.append(f"V11 {rel}: {kind} -> {target} is unsupported: {why}")
@@ -483,11 +528,9 @@ def verify_ontology(rel, data, secs, paths, bundle_rel, repo):
             notes.append(f"V12 {rel}: Playbook states no `requires` relation")
 
     if ctype == GUARDRAIL:
-        for sha in [s.lower() for s in str_list(data.get("motivated_by"))]:
-            files = repo.commit_files(sha)
-            if files is None:
-                findings.append(f"V1 {rel}: cited commit `{sha}` does not exist in this repository")
-            elif applies and not any(under(f, a) for f in files for a in applies):
+        for sha, files in evidence_commits(rel, "motivated_by", as_list(data.get("motivated_by")),
+                                           repo).items():
+            if applies and not any(under(f, a) for f in files for a in applies):
                 findings.append(f"V13 {rel}: motivated_by `{sha}` touches none of applies_to")
         enforced = str_list(data.get("enforced_by"))
         for e in enforced:

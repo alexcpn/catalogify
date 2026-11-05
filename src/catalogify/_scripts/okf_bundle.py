@@ -178,7 +178,9 @@ def relations(data):
         good.append({
             "kind": kind.strip(),
             "target": target.strip().rstrip("/") or target.strip(),
-            "evidence": [e.lower() for e in str_list(rel.get("evidence"))],
+            # As written, for verify to judge: a bare all-digit SHA arrives as an
+            # int (YAML 1.1 even reads a leading 0 as octal), a branch name as a str.
+            "raw_evidence": as_list(rel.get("evidence")),
         })
     return good, problems
 

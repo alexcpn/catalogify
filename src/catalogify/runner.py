@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from contextlib import ExitStack
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -71,11 +72,28 @@ def _find_bash() -> str:
     )
 
 
+# Scripts that import okf_bundle.py as a sibling module.
+_NEEDS_BUNDLE_MODULE = {"verify_okf.py", "validate_okf.py", "okf_find.py"}
+
+
 def _run_script(name: str, argv: list, interpreter: list) -> int:
-    """Materialize a bundled script to a real path and exec it with argv."""
+    """Materialize a bundled script to a real path and exec it with argv.
+
+    From an ordinary install the scripts are already files and run in place.
+    From a zip or another non-filesystem loader, `as_file` would extract the
+    one script alone, and a script that imports okf_bundle.py as a sibling
+    would fail. So those are copied into one temporary directory together.
+    """
     with ExitStack() as stack:
-        resource = files("catalogify._scripts").joinpath(name)
-        path = stack.enter_context(as_file(resource))
+        package = files("catalogify._scripts")
+        resource = package.joinpath(name)
+        if name in _NEEDS_BUNDLE_MODULE and not isinstance(resource, Path):
+            tmp = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+            for part in (name, "okf_bundle.py"):
+                (tmp / part).write_bytes(package.joinpath(part).read_bytes())
+            path = tmp / name
+        else:
+            path = stack.enter_context(as_file(resource))
         try:
             completed = subprocess.run([*interpreter, str(path), *argv], check=False)
         except OSError as exc:
