@@ -3,6 +3,7 @@
 **A codebase knowledge base the agent can actually afford to read — grounded in git, held to a commit.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![SkillSpector 2.12.0: SAFE 0/100, 22/22 checks passed, 2026-11-05](https://img.shields.io/static/v1?label=SkillSpector%202.12.0&message=SAFE%200%2F100%20%C2%B7%2022%2F22%20checks%20passed%20%C2%B7%202026-11-05&color=brightgreen)](https://github.com/NVIDIA/SkillSpector)
 
 `catalogify` turns a repository into an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
 (OKF v0.1) bundle: linked Markdown concepts covering architecture, services,

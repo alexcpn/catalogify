@@ -49,8 +49,8 @@ Before the first command, run `catalogify --version` and compare it with the
 as written below. If the command fails (the skill came from a Cursor plugin or
 a copied folder) or prints a different version (an older or newer CLI than
 this skill was written for), run every command through uv instead, pinned to
-this file's version: `uvx catalogify@<version> inventory`,
-`uvx catalogify@<version> verify knowledge` and so on. Tell the user once
+this file's version: `uvx catalogify@0.10.1 inventory`,
+`uvx catalogify@0.10.1 verify knowledge` and so on. Tell the user once
 which you used, and on a mismatch that `uv tool upgrade catalogify &&
 catalogify install` brings both back in step. If `uv` is missing too, stop and
 ask the user to install uv (<https://docs.astral.sh/uv/>) or the matching
@@ -106,8 +106,7 @@ in the current prompt overrides config for that run without changing the
 config. Otherwise use the configured value. Updates preserve the existing
 bundle structure and human curation by default.
 
-Pass the config through whenever you found one — both `catalogify inventory --config
-<path>` and `catalogify validate --config <path>` honor its `exclude` list; without
+Pass the config through whenever you found one — both `catalogify inventory --config <path>` and `catalogify validate --config <path>` honor its `exclude` list; without
 it they fall back to built-in defaults.
 
 Two variables the reference files assume: **`CONFIG`** (the config path, or
