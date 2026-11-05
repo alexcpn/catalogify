@@ -59,6 +59,17 @@ def pointer(what: str) -> str:
     )
 
 
+def trust_pointer(what: str) -> str:
+    return (
+        "\n## Knowledge bundle\n\n"
+        f"`knowledge/` is an OKF knowledge bundle for {what}. Every claim in it is checked against "
+        "the code and git history by `catalogify verify`, so treat it as accurate. Plan from it: "
+        "read `knowledge/index.md` and the concepts it links, and open source files only to "
+        "confirm a specific path or signature you are about to name. Do not re-explore code the "
+        "bundle already describes.\n"
+    )
+
+
 def bundle_prompt(scope: str) -> str:
     return (
         f"Use the catalogify skill to build an OKF knowledge bundle in `knowledge/` for {scope} "
@@ -167,6 +178,9 @@ SCENARIOS = {
         "fixture": "airflow-execution-api-knowledge",
         "pointer": pointer("the Execution API and the Task SDK runtime that talks to it "
                            "(execution_api in airflow-core; api/ and execution_time/ in task-sdk)"),
+        "trust_pointer": trust_pointer("the Execution API and the Task SDK runtime that talks to "
+                                       "it (execution_api in airflow-core; api/ and execution_time/ "
+                                       "in task-sdk)"),
         "bundle_prompt": bundle_prompt(
             "the Execution API and the Task SDK runtime that talks to it, in this Apache Airflow "
             "checkout. Scope it to `airflow-core/src/airflow/api_fastapi/execution_api/`, "
@@ -174,6 +188,9 @@ SCENARIOS = {
         "tasks": {"plan": DAGRUN_NOTE_PLAN},
     },
 }
+
+
+ARMS = ("bundle", "bundle-trust", "none")
 
 
 # ----------------------------------------------------------------- docker
@@ -210,7 +227,7 @@ def agent_env() -> dict[str, str]:
 CONTAINER_SCRIPT = r"""
 set -u
 cd /workspace/airflow
-if [ "$ARM" = bundle ]; then
+if [ "$ARM" = bundle ] || [ "$ARM" = bundle-trust ]; then
   cp -R /eval/fixture knowledge
   cat /eval/pointer.md >> AGENTS.md
   git add knowledge AGENTS.md && git commit -qm "Add knowledge bundle"
@@ -244,10 +261,10 @@ def run_container(scn: str, task: str, arm: str, prompt: str, out: Path) -> None
     with tempfile.TemporaryDirectory() as tmp:
         ev = Path(tmp)
         (ev / "prompt.txt").write_text(prompt)
-        (ev / "pointer.md").write_text(cfg["pointer"])
+        (ev / "pointer.md").write_text(cfg["trust_pointer"] if arm == "bundle-trust" else cfg["pointer"])
         (ev / "run.sh").write_text(CONTAINER_SCRIPT)
         shutil.copy(HERE / "grade_feature.py", ev / "grade_feature.py")
-        if arm == "bundle":
+        if arm in ("bundle", "bundle-trust"):
             shutil.copytree(HERE / "fixtures" / cfg["fixture"], ev / "fixture")
         if arm == "skill":
             shutil.copytree(SKILL_DIR, ev / "skill")
@@ -363,7 +380,7 @@ def cmd_trials(args: argparse.Namespace) -> None:
     tasks = args.tasks or list(cfg["tasks"])
     build_images(args.scenario)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    jobs = [(task, arm, i) for i in range(1, args.n + 1) for task in tasks for arm in ("bundle", "none")]
+    jobs = [(task, arm, i) for i in range(1, args.n + 1) for task in tasks for arm in args.arms]
     print(f"{len(jobs)} trials, {args.parallel} at a time -> results/{args.scenario}/{stamp}", flush=True)
 
     def one(job):
@@ -409,7 +426,7 @@ def cmd_summary(args: argparse.Namespace) -> None:
              "Seconds (mean) | Input tokens (mean) | Output tokens (mean) |",
              "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for task_dir in sorted(p for p in run.iterdir() if p.is_dir()):
-        for arm in ("bundle", "none"):
+        for arm in ARMS:
             # Re-grade from the raw outputs so grader fixes apply to earlier runs.
             recs = [collect(p, task_dir.name) for p in sorted((task_dir / arm).glob("attempt-*"))]
             errors = sum(1 for r in recs if r.get("error"))
@@ -454,6 +471,8 @@ def main() -> None:
     t.add_argument("-n", type=int, default=3, help="attempts per task and arm")
     t.add_argument("--tasks", nargs="+")
     t.add_argument("--parallel", type=int, default=2)
+    t.add_argument("--arms", nargs="+", default=["bundle", "none"], choices=ARMS,
+                   help="bundle-trust: the bundle with a pointer that says to plan from it")
     t.set_defaults(func=cmd_trials)
     r = sub.add_parser("retry", help="re-run attempts that ended in an API error")
     scenario_arg(r)

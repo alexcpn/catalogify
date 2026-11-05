@@ -488,6 +488,32 @@ agent read the bundle and then explored the code anyway.
   different instruction may change the token figures, and that is the next
   thing to try.
 
+### Follow-up: a pointer that says to plan from the bundle
+
+Same bundle, model, image and prompt. Only the `AGENTS.md` text changed. The
+new text says every claim is checked by `catalogify verify`, tells the agent
+to plan from the bundle, to open source files only to confirm a specific path
+or signature, and not to re-explore code the bundle describes. Three
+attempts; the two arms above are reused as the baseline.
+
+| Arm | Attempts | Score (mean, range) | Turns | Input tokens | Output tokens | Seconds |
+|---|---:|---|---:|---:|---:|---:|
+| bundle, "plan from it" | 3 | 0.79 (0.73–0.91) | 25.7 | 1,430,409 | 27,328 | 145 |
+
+**Telling the agent to rely on the bundle more than doubled input tokens and
+did not improve the plans.** The supervisor schema version and the TypeScript
+SDK were still missed at the same rate. The likely mechanism: the agent read
+many of the 17 concepts (152 KB, roughly 38k tokens) and then confirmed paths
+in code anyway. Every later turn re-sends that larger context, so the cost
+compounds. The transcripts were not kept, so which files it opened was not
+measured.
+
+What this says about catalogify: a bundle read whole is more expensive than
+grep on a task like this. A saving would need the agent to open only the one
+or two concepts the task touches. Nothing in the bundle or the pointer makes
+it do that.
+
+
 ## 14. Open follow-ups
 
 1. ~~Re-run generation under catalogify 0.7.0 and compare finding counts.~~

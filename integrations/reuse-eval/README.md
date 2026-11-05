@@ -102,3 +102,9 @@ much as it did without it. The parts the bundle documents were missed at about t
 the supervisor schema version in 2 of 3 plans, and the TypeScript SDK in 3 of 3. Details and
 caveats are in `EXPERIMENTS.md` §13a, including a grader change made after the first scoring and
 applied to both arms.
+
+A third arm, `bundle-trust`, keeps the bundle and changes only the `AGENTS.md` text. The new text
+says the bundle is verified, tells the agent to plan from it, and to open code only to confirm a
+path. That arm scored the same (0.79, range 0.73–0.91), but used 25.7 turns and 1,430,409 input
+tokens on average, more than twice either other arm. Reading the bundle wholesale costs more than
+it saves. See `EXPERIMENTS.md` §13a.
