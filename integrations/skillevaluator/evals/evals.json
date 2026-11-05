@@ -1,0 +1,63 @@
+{
+  "skill_name": "catalogify",
+  "evals": [
+    {
+      "id": "airflow-metrics-bundle-explicit",
+      "prompt": "Use the catalogify skill to build an OKF knowledge bundle in `knowledge/` for the metrics code of this Apache Airflow checkout. Scope it to the StatsD, Datadog and OpenTelemetry metrics clients in `shared/observability/src/airflow_shared/observability/metrics/`, `airflow-core/src/airflow/observability/metrics/` and `task-sdk/src/airflow/sdk/observability/metrics/`. Do not change any source code.",
+      "expected_output": "A `knowledge/` bundle with a root `index.md` carrying okf_version 0.1, a `log.md` whose entry has a `Commit:` line, and concepts for the metrics clients. Every concept's `source_files` are git-tracked, cited commits exist and belong to the concept, `catalogify validate` reports no errors and `catalogify verify` reports no findings. The bundle records that the shared library, airflow-core and task-sdk each carry their own metrics wrapper that reads its own config, so a change to how metrics clients are built usually has to land in all three.",
+      "assertions": [
+        "Read the catalogify SKILL.md and the generate workflow before writing the bundle",
+        "Ran catalogify inventory, history and cochange (directly or through uvx) on the metrics directories",
+        "Wrote knowledge/index.md with okf_version and a knowledge/log.md entry with a Commit: line",
+        "Ran catalogify validate and catalogify verify on the bundle and fixed what they reported",
+        "Did not modify any file outside knowledge/"
+      ],
+      "expected_skill": "catalogify",
+      "expected_script": null,
+      "files": []
+    },
+    {
+      "id": "airflow-metrics-bundle-implicit",
+      "prompt": "I'm new to Airflow and about to work on its metrics code. Write me a knowledge base for it, checked into the repo under `knowledge/` as linked markdown files with frontmatter, that explains how the StatsD and Datadog metrics clients are organised across shared/observability, airflow-core and task-sdk, and why they are shaped that way. Ground it in the git history and cite the commits. Don't change any code.",
+      "expected_output": "A conformant OKF bundle under `knowledge/` (index.md with okf_version 0.1, log.md with a Commit: line, typed concepts with title, description and source_files). The concepts explain the three metrics wrappers and why each component reads its own config, cite real commits that touched those files, and pass `catalogify verify` with no findings.",
+      "assertions": [
+        "Recognised the request as a knowledge-bundle task and used the catalogify skill",
+        "Mined git history for the metrics files rather than describing the code from memory",
+        "Cited commit shas that exist in this repository",
+        "Linked the concepts to each other with relative links",
+        "Did not modify any file outside knowledge/"
+      ],
+      "expected_skill": "catalogify",
+      "expected_script": null,
+      "files": []
+    },
+    {
+      "id": "airflow-uds-feature-contextual",
+      "prompt": "You are working in a checkout of Apache Airflow, a large codebase you have not seen before. Implement this feature request (apache/airflow#70666):\n\n> Airflow submits metrics through a network connection defined by host and port. However, the existing backends also support using an UDS socket but there is no way to configure that at the moment. A new `[metrics] statsd_socket_path` will be very useful to unlock this.\n\nRequirements:\n\n- Add a `statsd_socket_path` option to the `[metrics]` section of the config, unset by default. When it is set it takes precedence over `statsd_host` and `statsd_port`, for both the StatsD backend and the Datadog backend (`statsd_datadog_enabled = True`). It must work wherever Airflow emits StatsD or Datadog metrics.\n- Datadog: pass it as `datadog.DogStatsd(socket_path=...)` and leave `host` and `port` out. Accept a plain path or a `unix://`, `unixgram://` or `unixstream://` URL. `get_dogstatsd_logger` gains a `socket_path` keyword argument.\n- StatsD: in the shared statsd logger module, replace `get_statsd_logger` with two keyword-only functions. `get_udp_statsd_logger(*, stats_class=None, host, port, prefix=None, ipv6=False, ...)` keeps today's host/port behaviour and builds `StatsClient(host=..., port=..., prefix=..., ipv6=...)`. `get_socket_statsd_logger(*, stats_class=None, socket_path, prefix=None, ...)` builds `UnixSocketStatsClient(socket_path=..., prefix=...)`. Both default `stats_class` to the matching statsd class and keep the remaining keyword arguments of the old function. The no-argument `get_statsd_logger()` and `get_dogstatsd_logger()` wrappers outside the shared module keep their names.\n- A custom client set with `statsd_custom_client_path` must extend `statsd.UnixSocketStatsClient` when a socket path is set. Otherwise raise `AirflowConfigException` with exactly: `Your custom StatsD client must extend the statsd.UnixSocketStatsClient when using a socket path in order to ensure backwards compatibility.`\n- With the option unset, behaviour must not change.\n- Add or update unit tests. A Python environment with the test dependencies is on PATH; run tests from the distribution's directory, for example `cd shared/observability && python -m pytest tests/observability/metrics/test_stats.py`.\n\nWork only from this checkout. Do not fetch from the remote or look up the upstream change.",
+      "expected_output": "The new `[metrics] statsd_socket_path` option is declared in airflow-core's config.yml. The shared statsd logger module provides `get_udp_statsd_logger` and `get_socket_statsd_logger`, `get_dogstatsd_logger` accepts `socket_path`, and the airflow-core and task-sdk metrics wrappers both read the option and choose the socket client when it is set, raising the specified AirflowConfigException for an incompatible custom client. The upstream tests from apache/airflow#70517 pass in shared/observability and airflow-core, and the existing metrics tests still pass.",
+      "assertions": [
+        "Found all three places that build metrics clients: shared/observability, airflow-core and task-sdk",
+        "Declared statsd_socket_path in airflow-core/src/airflow/config_templates/config.yml",
+        "Kept host/port behaviour unchanged when the option is unset",
+        "Ran the metrics unit tests and they passed",
+        "Did not fetch from the remote or consult the upstream change"
+      ],
+      "expected_skill": "catalogify",
+      "expected_script": null,
+      "files": []
+    },
+    {
+      "id": "airflow-negative-question",
+      "prompt": "In this Airflow checkout, what is the default value of the `[metrics] statsd_port` option, and in which file is it declared? Answer in one or two sentences and don't change any files.",
+      "expected_output": "The default is 8125, declared in airflow-core/src/airflow/config_templates/config.yml. No files are created or changed.",
+      "assertions": [
+        "Answered with the default port 8125",
+        "Named airflow-core/src/airflow/config_templates/config.yml",
+        "Did not create a knowledge bundle or modify any file"
+      ],
+      "expected_skill": null,
+      "expected_script": null,
+      "files": []
+    }
+  ]
+}
