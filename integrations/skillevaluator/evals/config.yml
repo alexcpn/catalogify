@@ -1,0 +1,22 @@
+schema_version: 1
+
+harbor:
+  task_source: evals_json
+  n_attempts: 3                  # pass@3; agent runs vary
+  pass_threshold: 0.50
+  n_concurrent: 2
+  timeout_multiplier: 3          # a bundle over three directories takes a while
+  agent_workdir: /workspace/airflow
+  resources:
+    cpus: 4
+    memory_mb: 8192
+  agents:
+    claude-code:
+      model: claude-sonnet-5-5   # through OpenRouter: --agent-model claude-code=anthropic/claude-sonnet-5-5
+
+skill_workspace:
+  mode: isolated
+  include: []
+
+grading:
+  mode: default_plus_custom      # standard dimensions plus evals/grader.py
