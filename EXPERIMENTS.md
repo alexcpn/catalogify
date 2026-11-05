@@ -594,6 +594,27 @@ The chance of that split happening by luck alone is 0.11 (one-sided Fisher
 exact), so it is suggestive, not significant. The token difference is within
 the spread of either arm.
 
+### Control: a plain bundle without the ontology layer
+
+To find out which part did the work, a third arm used a bundle built by the
+published skill (0.10.1, from `main`). It has the same scope and the same
+model, but no typed relations, no playbook and no `find`. The agent read it
+through the plain "start here" pointer. 13 attempts. That bundle has 11
+concepts, `verify` 0 findings, and it mentions `_options_gen.ts` and its
+regeneration in four of them.
+
+| Arm | Attempts | Complete plans | Input tokens (mean) | Turns |
+|---|---:|---:|---:|---:|
+| none | 13 | 10 | 269,746 | 11.3 |
+| plain bundle, read up front | 13 | **13** | 291,440 | 10.2 |
+| typed bundle + `find` | 13 | **13** | 245,946 | 10.5 |
+
+**The plain bundle did as well.** On this task the gain came from having a
+bundle at all, which put the generated file in front of the agent. The
+ontology layer didn't add correctness. Its one edge is cost: `find` used 16%
+fewer input tokens than reading the plain bundle, but that gap is within
+the spread of either arm.
+
 Caveats:
 - One checklist item was widened after the first scoring, for both arms.
   Every no-bundle plan declared the option with `loader.add_option` in the
