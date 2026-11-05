@@ -66,6 +66,10 @@ SCRIPTS = {
     "okf-cochange.py": "scripts/python/okf-cochange.py",
     "validate_okf.py": "scripts/python/validate_okf.py",
     "verify_okf.py": "scripts/python/verify_okf.py",
+    # okf_bundle.py is imported by verify_okf.py, validate_okf.py and okf_find.py
+    # as a sibling, so it must sit in the same directory.
+    "okf_bundle.py": "scripts/python/okf_bundle.py",
+    "okf_find.py": "scripts/python/okf_find.py",
 }
 
 WORKFLOWS = ["generate", "update", "clarify", "validate"]
@@ -179,6 +183,7 @@ COMMON_RULES = [
     ("catalogify history", _cmd("okf-history.sh")),
     ("catalogify cochange", _cmd("okf-cochange.py")),
     ("catalogify verify", _cmd("verify_okf.py")),
+    ("catalogify find", _cmd("okf_find.py")),
     ("catalogify validate", _cmd("validate_okf.py")),
     # Sibling workflows are slash commands here.
     ("the **generate** workflow", "`/speckit.okf.generate`"),

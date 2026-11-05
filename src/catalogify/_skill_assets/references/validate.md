@@ -7,8 +7,10 @@ results for the user.
 whether the bundle is **true**. Unless the user asked only for a
 conformance check, run `catalogify verify "$BUNDLE_DIR"` as well and report
 both: verify resolves each cited commit, each `# Interfaces` symbol and
-each dependency link against the repository, and its FINDINGs are claims
-the code does not support.
+each dependency link against the repository, as well as every typed
+relation, playbook and guardrail (V9–V14). Its FINDINGs are claims the code
+does not support. A V13 guardrail violation is a finding about the code, not
+the bundle: report where the forbidden pattern matched.
 
 Scope hints: if the user named a bundle path, validate that one.
 
@@ -31,7 +33,8 @@ Scope hints: if the user named a bundle path, validate that one.
      cross-links (W2), missing `title`/`description` (W1), missing
      indexes (W3), empty concept bodies (W4), possible secrets (W5),
      dangling `source_files` entries (W6), possible duplicate concepts
-     sharing a type+title (W7), and unresolved `open_questions` (W8).
+     sharing a type+title (W7), unresolved `open_questions` (W8), and
+     malformed relations, playbooks or guardrails (W12).
      Report them grouped by kind; broken links may legitimately represent
      not-yet-written knowledge. For W8, point the user at
      the **clarify** workflow to resolve the questions. Do not re-derive

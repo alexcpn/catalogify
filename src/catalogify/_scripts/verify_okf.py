@@ -24,6 +24,19 @@ Findings (a claim is unsupported):
       *no* entry is tracked, the concept is reported once and its other
       checks are skipped, because git cannot see those files to check them.
 
+Ontology layer (typed relations, playbooks, guardrails; see okf_bundle.py):
+  V9  A relation is malformed, uses a kind outside the fixed vocabulary
+      (changes_with, generated_from, versioned_by, calls, reads_config,
+      requires), or uses `requires` outside a Playbook.
+  V10 A relation target or an `applies_to` path is not tracked by git.
+  V11 A relation is unsupported: none of its `evidence` commits touches
+      both ends (the concept's source_files, or a Playbook/Guardrail's
+      applies_to, and the target). `calls` may instead be backed by an
+      import, `reads_config` by a reference to the target's file name.
+  V13 A Guardrail is violated or unfounded: a `forbids` pattern occurs in
+      non-test code, a `motivated_by` commit touches none of applies_to,
+      or an `enforced_by` file is not tracked.
+
 Notes (probably wrong, legitimately arguable):
   V6  A `# Dependencies` link to another concept that no import backs, in
       either direction. Import lines are matched against several forms of
@@ -33,6 +46,10 @@ Notes (probably wrong, legitimately arguable):
       unbacked link, so it is reported rather than failed.
   V7  The body claims an "import cycle" between Go packages. Go forbids
       them; what is almost always meant is a shared leaf sub-package.
+  V12 A Playbook has no `# Steps`, or states no `requires` relation.
+  V14 A Guardrail has neither `enforced_by` nor `forbids`: documented,
+      not enforced. Real enforcement lives in tests, CI and sandboxes;
+      `forbids` only catches literal patterns, never semantic leaks.
 
 Usage: verify_okf.py <bundle_dir> [--repo-root PATH] [--json] [--strict]
 Exit 0 when no findings (notes allowed), 1 when findings exist, 2 on bad
@@ -48,25 +65,14 @@ import re
 import subprocess
 import sys
 
-try:
-    import yaml  # type: ignore
-    HAVE_YAML = True
-except ImportError:
-    HAVE_YAML = False
-
-RESERVED = {"index.md", "log.md"}
-# Not concepts: a bundle's human front door, since forges render README.md
-# when a directory is opened and ignore index.md; agent instruction files for
-# agents that read the bundle; and the human-owned GUIDANCE.md, which may
-# quote commit-like hex that is not a claim. Matches validate_okf.py.
-IGNORED = {"README.md", "GUIDANCE.md", "AGENTS.md", "CLAUDE.md", "GEMINI.md"}
-# Case variants too (guidance.md): validate_okf.py warns about them (W11) and
-# skips them, so they are not concepts to verify either.
-IGNORED_LOWER = {n.lower() for n in IGNORED}
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from okf_bundle import (  # noqa: E402  (sibling module, shared with okf_find.py)
+    GUARDRAIL, HAVE_YAML, PLAYBOOK, RELATION_KINDS, concept_type, forbids,
+    relations, sections, str_list, under, walk,
+)
 # Backtick-quoted hex token: how generate.md tells the agent to cite a commit.
 SHA_TOKEN = re.compile(r"`([0-9a-f]{7,40})`")
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
-HEADING = re.compile(r"^#{1,3}\s+(.*?)\s*$", re.M)
 # Shared with okf-history.sh — keep the two in step.
 TEST_FILE = re.compile(
     r"(^|/)(tests?|testing|testdata|__tests__|fixtures?|spec)/"
@@ -183,55 +189,10 @@ class Repo:
 
 # --- parsing ---------------------------------------------------------------
 
-def split_frontmatter(text):
-    if not text.startswith("---"):
-        return None, text
-    lines = text.split("\n")
-    if lines[0].strip() != "---":
-        return None, text
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            return "\n".join(lines[1:i]), "\n".join(lines[i + 1:])
-    return None, text
 
 
-def parse_yaml(fm):
-    if HAVE_YAML:
-        try:
-            data = yaml.safe_load(fm)
-            return data if isinstance(data, dict) else None
-        except yaml.YAMLError:
-            return None
-    data, key = {}, None
-    for line in fm.splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        item = re.match(r"^\s+-\s*(.*)$", line)
-        if item and key:
-            data.setdefault(key, []).append(item.group(1).strip().strip("'\""))
-            continue
-        if ":" in line and not line.startswith((" ", "\t")):
-            k, _, v = line.partition(":")
-            key = k.strip()
-            v = v.strip().strip("'\"")
-            data[key] = v if v else []
-    return data
 
 
-def sections(body):
-    """Split a body into {heading: text} by markdown heading."""
-    out, current, buf = {}, None, []
-    for line in body.splitlines():
-        m = HEADING.match(line)
-        if m:
-            if current is not None:
-                out[current] = "\n".join(buf)
-            current, buf = m.group(1).strip().lower(), []
-        else:
-            buf.append(line)
-    if current is not None:
-        out[current] = "\n".join(buf)
-    return out
 
 
 def table_first_column(text):
@@ -332,10 +293,6 @@ def symbols_in(cell):
     return out
 
 
-def under(filepath, prefix):
-    """True when `filepath` is `prefix` itself or sits inside it."""
-    prefix = prefix.rstrip("/")
-    return filepath == prefix or filepath.startswith(prefix + "/")
 
 
 def source_paths(data, repo_root):
@@ -347,9 +304,7 @@ def source_paths(data, repo_root):
 
 # --- checks ----------------------------------------------------------------
 
-def verify_concept(rel, text, bundle, repo_root, repo, concept_sources):
-    fm, body = split_frontmatter(text)
-    data = parse_yaml(fm) if fm else None
+def verify_concept(rel, data, body, bundle_rel, repo_root, repo, concept_sources):
     if not isinstance(data, dict):
         return  # validate_okf.py owns malformed frontmatter (E1)
 
@@ -461,6 +416,100 @@ def verify_concept(rel, text, bundle, repo_root, repo, concept_sources):
             f"this is normally a shared leaf sub-package"
         )
 
+    verify_ontology(rel, data, secs, paths, bundle_rel, repo)
+
+
+# --- ontology layer: relations, playbooks, guardrails ------------------------
+
+def commit_links(repo, sha, ends, target, rel):
+    """True when commit `sha` touched one of `ends` and `target`; V1 when it is no commit."""
+    files = repo.commit_files(sha)
+    if files is None:
+        findings.append(f"V1 {rel}: cited commit `{sha}` does not exist in this repository")
+        return False
+    return (any(under(f, e) for f in files for e in ends)
+            and any(under(f, target) for f in files))
+
+
+def verify_ontology(rel, data, secs, paths, bundle_rel, repo):
+    """V9-V14. Typed claims are checked like prose claims: each one must resolve."""
+    if not HAVE_YAML:
+        if data.get("relations") or data.get("forbids"):
+            notes.append(f"V9 {rel}: relations/forbids not checked — install PyYAML to parse them")
+        return
+    ctype = concept_type(data)
+    applies = [a.rstrip("/") for a in str_list(data.get("applies_to"))]
+    for a in applies:
+        if not repo.tracked(a):
+            findings.append(f"V10 {rel}: applies_to '{a}' is not tracked by git")
+    applies = [a for a in applies if repo.tracked(a)]
+    # What a relation's evidence must connect the target to: a playbook or a
+    # guardrail is about its applies_to paths, anything else about its source_files.
+    ends = applies if ctype in (PLAYBOOK, GUARDRAIL) else paths
+
+    rels, problems = relations(data)
+    for problem in problems:
+        findings.append(f"V9 {rel}: malformed relation — {problem}")
+    for r in rels:
+        kind, target, evidence = r["kind"], r["target"], r["evidence"]
+        if kind not in RELATION_KINDS:
+            findings.append(f"V9 {rel}: relation kind '{kind}' is not one of "
+                            f"{', '.join(sorted(RELATION_KINDS))}")
+            continue
+        if kind == "requires" and ctype != PLAYBOOK:
+            findings.append(f"V9 {rel}: 'requires' belongs to a Playbook, not a {data.get('type')}")
+            continue
+        if not repo.tracked(target):
+            findings.append(f"V10 {rel}: {kind} target '{target}' is not tracked by git")
+            continue
+        if not ends:
+            findings.append(f"V11 {rel}: {kind} -> {target} has nothing to anchor it — the concept "
+                            f"has no tracked source_files{' or applies_to' if ctype in (PLAYBOOK, GUARDRAIL) else ''}")
+            continue
+        backed = any(commit_links(repo, sha, ends, target, rel) for sha in evidence)
+        if not backed and kind == "calls":
+            backed = any(n in repo.import_lines(ends) for n in import_needles(target))
+        if not backed and kind == "reads_config":
+            name = os.path.basename(target)
+            backed = bool(name) and bool(repo.grep_files(name, ends, word=False))
+        if not backed:
+            why = ("no cited commit touches both ends" if evidence else "it cites no evidence")
+            findings.append(f"V11 {rel}: {kind} -> {target} is unsupported: {why}")
+
+    if ctype == PLAYBOOK:
+        if not next((v for k, v in secs.items() if k.startswith("step")), "").strip():
+            notes.append(f"V12 {rel}: Playbook has no # Steps")
+        if not any(r["kind"] == "requires" for r in rels):
+            notes.append(f"V12 {rel}: Playbook states no `requires` relation")
+
+    if ctype == GUARDRAIL:
+        for sha in [s.lower() for s in str_list(data.get("motivated_by"))]:
+            files = repo.commit_files(sha)
+            if files is None:
+                findings.append(f"V1 {rel}: cited commit `{sha}` does not exist in this repository")
+            elif applies and not any(under(f, a) for f in files for a in applies):
+                findings.append(f"V13 {rel}: motivated_by `{sha}` touches none of applies_to")
+        enforced = str_list(data.get("enforced_by"))
+        for e in enforced:
+            if not repo.tracked(e):
+                findings.append(f"V13 {rel}: enforced_by '{e}' is not tracked by git")
+        trips, trip_problems = forbids(data)
+        for problem in trip_problems:
+            findings.append(f"V9 {rel}: malformed guardrail — {problem}")
+        for trip in trips:
+            scope = [p for p in trip["in"] if repo.tracked(p)]
+            if not scope:
+                continue
+            hits = [h for h in repo.grep_files(trip["pattern"], scope, word=False)
+                    if not TEST_FILE.search(h) and not under(h, bundle_rel)]
+            if hits:
+                shown = ", ".join(hits[:3]) + ("…" if len(hits) > 3 else "")
+                findings.append(f"V13 {rel}: guardrail violated — forbidden `{trip['pattern']}` "
+                                f"found in {shown}")
+        if not enforced and not trips:
+            notes.append(f"V14 {rel}: Guardrail is documented but not enforced — no enforced_by, "
+                         f"no forbids")
+
 
 def find_repo_root(bundle):
     p = bundle
@@ -494,29 +543,15 @@ def main():
     repo = Repo(repo_root)
 
     # Pass 1: every concept's source_files, so dependency links can resolve.
-    concepts = {}
-    concept_sources = {}
-    for dirpath, dirnames, filenames in os.walk(bundle):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
-        for f in filenames:
-            if not f.endswith(".md") or f in RESERVED or f.lower() in IGNORED_LOWER:
-                continue
-            path = os.path.join(dirpath, f)
-            rel = os.path.relpath(path, bundle)
-            try:
-                with open(path, encoding="utf-8", errors="replace") as fh:
-                    text = fh.read()
-            except OSError:
-                continue
-            concepts[rel] = text
-            fm, _ = split_frontmatter(text)
-            data = parse_yaml(fm) if fm else None
-            if isinstance(data, dict):
-                concept_sources[rel] = source_paths(data, repo_root)
+    concepts = walk(bundle)
+    concept_sources = {rel: source_paths(data, repo_root)
+                       for rel, (_, data, _) in concepts.items() if data}
+    bundle_rel = os.path.relpath(bundle, repo_root)
 
     # Pass 2: verify.
     for rel in sorted(concepts):
-        verify_concept(rel, concepts[rel], bundle, repo_root, repo, concept_sources)
+        _, data, body = concepts[rel]
+        verify_concept(rel, data, body, bundle_rel, repo_root, repo, concept_sources)
 
     if args.json:
         print(json.dumps({

@@ -98,6 +98,11 @@ def cochange(argv: list = None) -> int:
     return _run_script("okf-cochange.py", list(sys.argv[1:] if argv is None else argv), [sys.executable])
 
 
+def find(argv: list = None) -> int:
+    """`okf-find` — what the bundle knows about a file: guardrails, relations, playbooks."""
+    return _run_script("okf_find.py", list(sys.argv[1:] if argv is None else argv), [sys.executable])
+
+
 def verify(argv: list = None) -> int:
     """`okf-verify` — check a bundle's claims against the repository."""
     return _run_script("verify_okf.py", list(sys.argv[1:] if argv is None else argv), [sys.executable])
@@ -126,3 +131,7 @@ def main_cochange() -> int:
 
 def main_verify() -> int:
     return verify()
+
+
+def main_find() -> int:
+    return find()

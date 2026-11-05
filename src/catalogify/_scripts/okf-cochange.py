@@ -20,12 +20,16 @@ Metrics per pair (A, B):
   lift        confidence / base rate of B. Above 1 means the pair co-occurs
               more than chance; near 1 means B just changes a lot.
 
+--evidence N records up to N commits per pair, newest first, so a typed
+relation (`changes_with`, `generated_from`, ...) or a Playbook `requires` can
+cite them and `catalogify verify` can check that each touches both ends.
+
 Commits touching more than --max-files paths are skipped: a mass rename or a
 license-header sweep would otherwise couple everything to everything.
 
 Usage:
   okf-cochange.py [<path> ...] [--depth N] [--since DATE] [--max-commits N]
-                  [--max-files N] [--min-support N] [--top N] [--json]
+                  [--max-files N] [--min-support N] [--top N] [--evidence N] [--json]
 
 With no paths, it reports the most coupled pairs repo-wide, grouping files
 into units by their first --depth path components. With paths, each path is
@@ -95,6 +99,8 @@ def main():
     ap.add_argument("--max-files", type=int, default=40, help="Skip commits touching more paths than this (default 40)")
     ap.add_argument("--min-support", type=int, default=3, help="Ignore pairs seen in fewer commits (default 3)")
     ap.add_argument("--top", type=int, default=15, help="Rows per unit, or overall (default 15)")
+    ap.add_argument("--evidence", type=int, default=0,
+                    help="Record up to N commit SHAs per pair, newest first, to cite as evidence")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -105,9 +111,10 @@ def main():
 
     unit_commits = defaultdict(int)
     pair_commits = defaultdict(int)
+    pair_shas = defaultdict(list)
     scanned = skipped = 0
 
-    for _sha, files in git_log(args.max_commits, args.since):
+    for sha, files in git_log(args.max_commits, args.since):
         scanned += 1
         if len(files) > args.max_files:
             skipped += 1
@@ -119,6 +126,8 @@ def main():
         for i, a in enumerate(ordered):
             for b in ordered[i + 1:]:
                 pair_commits[(a, b)] += 1
+                if len(pair_shas[(a, b)]) < args.evidence:
+                    pair_shas[(a, b)].append(sha[:10])
 
     considered = scanned - skipped
     if not considered:
@@ -133,12 +142,15 @@ def main():
         for src, dst, c_src, c_dst in ((a, b, ca, cb), (b, a, cb, ca)):
             confidence = support / c_src if c_src else 0.0
             base = c_dst / considered if considered else 0.0
-            neighbours[src].append({
+            row = {
                 "unit": dst,
                 "support": support,
                 "confidence": round(confidence, 4),
                 "lift": round(confidence / base, 2) if base else None,
-            })
+            }
+            if args.evidence:
+                row["commits"] = pair_shas[(a, b)]
+            neighbours[src].append(row)
     for rows in neighbours.values():
         rows.sort(key=lambda r: (-r["confidence"], -r["support"]))
 
@@ -180,6 +192,8 @@ def main():
         for r in rows:
             lift = f"{r['lift']:.1f}" if r["lift"] is not None else "  -"
             print(f"    {r['unit']:<50} {r['confidence'] * 100:4.0f}%   {r['support']:>7}   {lift:>4}")
+            if r.get("commits"):
+                print(f"        evidence: {' '.join(r['commits'])}")
         print()
     return 0
 

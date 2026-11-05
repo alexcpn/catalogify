@@ -29,8 +29,13 @@ Commands:
                                            [TEST-ONLY]. Add --patch for diffs
                                            (careful: can surface old secrets).
   cochange [<path>...] [--depth N]         Directories that change together in
-           [--since D] [--json]            history: coupling that no import
-                                           graph or call graph can see.
+           [--since D] [--evidence N]      history: coupling that no import
+           [--json]                        graph or call graph can see.
+                                           --evidence lists commits to cite.
+  find <path>... [--bundle DIR] [--json]   What the bundle says about a file:
+                                           guardrails first, then concepts,
+                                           typed relations in and out, and
+                                           playbooks (what else must change).
   validate <bundle_dir> [--config <cfg>]   Check a bundle against OKF v0.1 §9
                                            (structure: is it well-formed?).
   verify <bundle_dir> [--json] [--strict]  Check the bundle's CLAIMS against the
@@ -73,6 +78,7 @@ def main(argv: list = None) -> int:
         "validate": runner.validate,
         "verify": runner.verify,
         "cochange": runner.cochange,
+        "find": runner.find,
     }
     if command in dispatch:
         return dispatch[command](rest)

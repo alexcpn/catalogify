@@ -3,7 +3,7 @@ name: catalogify
 description: Generate and maintain an Open Knowledge Format (OKF v0.1) knowledge bundle for a source-code repository — a directory of cross-linked markdown concepts with YAML frontmatter describing its services, modules, APIs, data models, and operations. Use when asked to document a codebase as a knowledge base, build or refresh an OKF bundle or knowledge catalog, mine git history for the "why" behind code, keep repo documentation in sync with code changes, or validate OKF conformance. Triggers on "catalogify", "OKF", "knowledge bundle", "knowledge catalog", "document this repo", "service catalog", "codebase knowledge base".
 license: MIT
 metadata:
-  version: "0.10.1"
+  version: "0.11.0"
   commands:
     - catalogify
 ---
@@ -41,7 +41,7 @@ destroy human curation.
 
 ## Commands
 
-Five commands come with this skill. Run them from anywhere inside the repo;
+Six commands come with this skill. Run them from anywhere inside the repo;
 each accepts `--help`.
 
 Before the first command, run `catalogify --version` and compare it with the
@@ -49,8 +49,8 @@ Before the first command, run `catalogify --version` and compare it with the
 as written below. If the command fails (the skill came from a Cursor plugin or
 a copied folder) or prints a different version (an older or newer CLI than
 this skill was written for), run every command through uv instead, pinned to
-this file's version: `uvx catalogify@0.10.1 inventory`,
-`uvx catalogify@0.10.1 verify knowledge` and so on. Tell the user once
+this file's version: `uvx catalogify@0.11.0 inventory`,
+`uvx catalogify@0.11.0 verify knowledge` and so on. Tell the user once
 which you used, and on a mismatch that `uv tool upgrade catalogify &&
 catalogify install` brings both back in step. If `uv` is missing too, stop and
 ask the user to install uv (<https://docs.astral.sh/uv/>) or the matching
@@ -61,9 +61,10 @@ commands or carry on with a mismatched CLI.
 | --- | --- |
 | `catalogify inventory [out.json] [--config <cfg>]` | Repo-wide inventory as JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas/migrations, CI/CD, docs, ADR/RFC docs, plus `git.history` (`churn` per-file commit counts = significance signal, `recent_commits`) and `git.untracked_dirs` (subtrees on disk that git does not track — vendored or imported code, **never** give these concepts). Also `agent_docs` (tracked `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `.github/copilot-instructions.md` and the directory each one covers), `guidance` (`BUNDLE_DIR/GUIDANCE.md`: exists, tracked, `sha256`) and `bundle` (`concept_files`, the count that decides generate vs update). Prints `Inventory written to <path>` — read the JSON from *that* path, it is per-run and not fixed. Each category carries a `truncated` flag. |
 | `catalogify history <path>… [--limit N] [--json] [--patch]` | Bounded per-concept git history: creation commit, commit count, recent subjects, and flagged commits, each with the files it touched, its issue/PR refs and a body excerpt. A commit is flagged for a risk word in its subject (revert, deadlock, race, regression, security), for closing an issue anywhere in its message (`Fixes #842`), or for a `Fixes: <sha>` trailer. Commits that changed only test files are marked `[TEST-ONLY]` and must not be cited as gotchas. This is where the **"why"** — invariants and gotchas — comes from. Diff-free by default; `--patch` opts into diffs and can surface secrets that were later removed. |
-| `catalogify cochange [<path>…] [--depth N] [--since D] [--json]` | Directories that change together in history, with `support`, `confidence` and `lift`. This is **logical coupling**: two units that always move in the same commit are related even when neither imports the other, because the mechanism is a wire contract, a shared schema or a deployment rule. No import graph or call graph can see it. Use it in planning to find units worth a concept, and to record couplings a reader would otherwise miss. |
-| `catalogify verify <bundle_dir> [--json] [--strict]` | Checks the bundle's **claims** against the repository, where `validate` only checks its **structure**. Every cited commit must exist, touch this concept's `source_files`, and not be test-only; every symbol in `# Interfaces` must exist in non-test code; every `# Gotchas` section must cite something; and every `source_files` path must be **tracked by git** (V8 — vendored or imported code in the working tree is not this repository's to document). Run it after generate and after update, and fix every FINDING. |
-| `catalogify validate <bundle_dir> [--config <cfg>] [--json]` | OKF §9 conformance checker. ERRORs: unparseable frontmatter, missing/empty `type`, malformed `index.md`/`log.md`, `log.md` block missing its `Commit:` line. `log.md` blocks may carry one `Guidance:` line directly after `Commit:`. WARNINGs: W1 missing title/description, W2 broken links, W3 missing index, W4 empty body, W5 possible secret, W6 dangling `source_files`, W7 duplicate concept, W8 unresolved `open_questions`, W10 `GUIDANCE.md` below the bundle root, W11 a wrong-case name such as `guidance.md` (rename it; names are case-sensitive). `README.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and the root `GUIDANCE.md` are not concepts and are skipped. |
+| `catalogify cochange [<path>…] [--depth N] [--since D] [--evidence N] [--json]` | Directories that change together in history, with `support`, `confidence` and `lift`. This is **logical coupling**: two units that always move in the same commit are related even when neither imports the other, because the mechanism is a wire contract, a shared schema or a deployment rule. No import graph or call graph can see it. Use it in planning to find units worth a concept, and to write typed `relations` and Playbooks. `--evidence N` lists up to N commits per pair: the SHAs to cite. |
+| `catalogify find <path>… [--bundle DIR] [--json]` | What the bundle says about one file, bounded: Guardrails covering it first, then its concepts, their typed relations, relations elsewhere that point at it ("X is generated_from this"), and Playbooks with what else must change. This is how agents should *use* a bundle: look a file up before changing it instead of reading the whole bundle. |
+| `catalogify verify <bundle_dir> [--json] [--strict]` | Checks the bundle's **claims** against the repository, where `validate` only checks its **structure**. Every cited commit must exist, touch this concept's `source_files`, and not be test-only; every symbol in `# Interfaces` must exist in non-test code; every `# Gotchas` section must cite something; every `source_files` path must be **tracked by git** (V8 — vendored or imported code in the working tree is not this repository's to document); and every typed relation, Playbook and Guardrail must resolve (V9 kind, V10 tracked target, V11 evidence touching both ends, V13 guardrail violated or unfounded; notes V12, V14). Run it after generate and after update, and fix every FINDING. |
+| `catalogify validate <bundle_dir> [--config <cfg>] [--json]` | OKF §9 conformance checker. ERRORs: unparseable frontmatter, missing/empty `type`, malformed `index.md`/`log.md`, `log.md` block missing its `Commit:` line. `log.md` blocks may carry one `Guidance:` line directly after `Commit:`. WARNINGs: W1 missing title/description, W2 broken links, W3 missing index, W4 empty body, W5 possible secret, W6 dangling `source_files`, W7 duplicate concept, W8 unresolved `open_questions`, W12 malformed relations/playbook/guardrail fields, W10 `GUIDANCE.md` below the bundle root, W11 a wrong-case name such as `guidance.md` (rename it; names are case-sensitive). `README.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and the root `GUIDANCE.md` are not concepts and are skipped. |
 
 `catalogify inventory` and `catalogify history` need `bash`, and use `git`
 when it is available (on Windows both come with Git for Windows).
@@ -169,6 +170,9 @@ affected concept.
 - **Writes stay inside `BUNDLE_DIR`.** Never modify source code.
 - **Never create or modify `GUIDANCE.md`.** It belongs to humans.
 - **Only git-tracked code gets concepts**, whatever guidance asks for.
+- **Never invent a Guardrail.** Propose one only from a security-flagged
+  commit, `SECURITY.md` or an agent doc, and add an `open_questions` entry so
+  a human confirms it. Agents obey guardrails, so a wrong one does harm.
 - Reserved filenames `index.md` and `log.md` are never concepts (OKF §3.1).
 - Only `type` is required in frontmatter, but always write `title` and
   `description` — indexes are useless without them.
@@ -191,5 +195,15 @@ knowledge/
 ├── modules/…           # type: Module
 ├── apis/…              # type: API Endpoint / API Resource
 ├── data/…              # type: Data Model / Database Table
-└── operations/…        # type: Pipeline / Configuration / Playbook
+└── operations/
+    ├── playbooks/…     # type: Playbook — "if you change X, also change Y", mined from co-change
+    ├── guardrails/…    # type: Guardrail — rules never to break (no root, no sandbox leaks)
+    └── …               # type: Pipeline / Configuration
 ```
+
+**Typed layer.** Concepts may carry a `relations` list
+(`changes_with`, `generated_from`, `versioned_by`, `calls`, `reads_config`;
+`requires` in Playbooks), each with commit `evidence`. Playbooks and
+Guardrails carry `applies_to`. `catalogify find` serves these to agents one file
+at a time; `catalogify verify` checks them. `references/generate.md` says how to
+write them.

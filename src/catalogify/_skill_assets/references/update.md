@@ -147,6 +147,13 @@ and the discrepancy becomes one.
    - For uncovered changes: create new concept files per the generate
      command's frontmatter/body rules, and add them to the relevant
      `index.md` files.
+   - Typed layer: for every stale concept, Playbook and Guardrail, re-run
+     `catalogify cochange <its paths> --evidence 5 --json`. Add new
+     evidence SHAs to existing `relations`, add relations for partners that
+     now meet the bar (support 3+, lift 5+), and drop a relation only when its
+     target no longer exists (git tracks a rename: update the target
+     instead). Never weaken a Guardrail's `rule` or delete one. If the code
+     now violates it (`catalogify verify` V13), report that to the user.
 
 7. **Maintain reserved files.**
    - Update affected `index.md` entries (add new, mark deprecated).

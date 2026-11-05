@@ -1,7 +1,7 @@
 {
   "name": "catalogify",
   "displayName": "catalogify",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "Turn a repository into a knowledge catalog an AI agent can afford to read: Open Knowledge Format concepts mined from code and git history, with every claim checked against the repo.",
   "author": {
     "name": "Alex Punnen"

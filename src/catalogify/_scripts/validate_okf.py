@@ -34,6 +34,10 @@ WARNINGS (consumers must tolerate; reported for quality):
   W7  Possible duplicate concept: another file shares the same
       `type` + `title`.
   W8  Concept has unresolved `open_questions` (run the clarify workflow).
+  W12 Malformed ontology fields: `relations` that are not a list of
+      {kind, target} mappings, a Playbook or Guardrail without
+      `applies_to`, a Guardrail without a `rule`, or a malformed `forbids`.
+      Structure only: `catalogify verify` checks whether they are true.
   W10 `GUIDANCE.md` below the bundle root. Only the root one steers runs,
       so a nested one is skipped rather than checked as a concept.
   W11 A case variant of a non-concept name (`guidance.md`, `Agents.md`).
@@ -77,6 +81,9 @@ try:
     HAVE_YAML = True
 except ImportError:
     HAVE_YAML = False
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from okf_bundle import structure_problems  # noqa: E402  (sibling module)
 
 RESERVED = {"index.md", "log.md"}
 # README.md is not an OKF concept and is not checked as one. OKF's navigation
@@ -183,6 +190,9 @@ def check_concept(path: str, rel: str, bundle: str, repo_root: str):
     check_links(body, rel, os.path.dirname(path), bundle, NESTED_BUNDLE)
     check_source_files(data, rel, repo_root)
     check_open_questions(data, rel)
+    if HAVE_YAML:  # the fallback parser cannot read nested mappings
+        for problem in structure_problems(data):
+            warnings.append(f"W12 {rel}: {problem}")
     if isinstance(t, str) and t.strip() and data.get("title"):
         concept_meta.append((rel, t.strip(), str(data["title"]).strip()))
     for pattern in SECRET_PATTERNS:

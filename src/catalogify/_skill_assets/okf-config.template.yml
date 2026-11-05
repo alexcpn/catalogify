@@ -42,9 +42,14 @@ okf:
     config: "Configuration"
     pipeline: "Pipeline"
     metric: "Metric"
-    playbook: "Playbook"
+    playbook: "Playbook"     # applies_to + requires relations + # Steps
+    guardrail: "Guardrail"   # applies_to + rule (+ enforced_by, forbids)
     decision: "Design Decision"
     reference: "Reference"
+
+  # Typed relations are a fixed vocabulary, checked by `catalogify verify`:
+  # changes_with, generated_from, versioned_by, calls, reads_config, and
+  # requires (Playbooks only). Each cites commits touching both ends.
 
   # Bundle layout: top-level subdirectories the generator organizes
   # concepts into. Directories with no concepts are omitted.
@@ -54,7 +59,7 @@ okf:
     - "modules"        # significant packages / libraries within the code
     - "apis"           # endpoints, schemas, contracts
     - "data"           # tables, models, migrations
-    - "operations"     # playbooks, runbooks, pipelines, configs
+    - "operations"     # playbooks/, guardrails/, runbooks, pipelines, configs
     - "references"     # mirrored external material
 
   # Existing concept-coverage behavior. Leave unchanged unless you explicitly

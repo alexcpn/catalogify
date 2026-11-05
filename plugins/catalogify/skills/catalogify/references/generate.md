@@ -447,6 +447,96 @@ isn't clear, record an `open_questions` entry rather than guessing.
 surface credentials that were later removed — describe shape, never
 values, exactly as you would for current code.
 
+### Relations, playbooks and guardrails — the typed layer
+
+Prose tells a reader *about* the code. The typed layer tells an agent what a
+change to a file **obliges**: what else must move, what is generated from
+it, which rules guard it. `catalogify find <file>` serves exactly these
+fields at the moment an agent touches the file, so it never has to read the
+whole bundle, and `catalogify verify` checks every one against git.
+
+**Relations.** On any concept, a `relations` list in frontmatter. Each entry
+has a `kind` from this fixed set, a repository-relative `target` path that git
+tracks, and `evidence`: commits that touched one of the concept's
+`source_files` *and* the target.
+
+```yaml
+relations:
+  - {kind: versioned_by, target: api/versions/, evidence: [f14bed9b85, 63b615b252]}
+  - {kind: generated_from, target: schema/openapi.yaml, evidence: [3dcdcb8002]}
+```
+
+| kind | write it when |
+| --- | --- |
+| `changes_with` | the two move together and nothing more specific is established |
+| `generated_from` | this file is regenerated from the target (a code generator, a schema dump) |
+| `versioned_by` | a change here needs a new entry in the target (API versions, migrations) |
+| `calls` | this invokes the target at runtime; an import alone also backs it |
+| `reads_config` | this reads options the target declares; a reference to the target's file name also backs it |
+
+Find candidates and their evidence with one command per concept:
+
+```bash
+catalogify cochange <the concept's source dirs> --evidence 5 --json
+```
+
+Write a relation only for a partner with real support (3+ commits) and high
+lift (5+). Copy the commit SHAs from the `commits` list, and pick the most
+specific kind that the code itself confirms: open the target and check that it
+is generated, or versioned, before you write that. If you can't tell, write
+`changes_with`. Test-only partners are not relations.
+
+**Playbooks.** When co-change shows the *same* set of partners moving
+together across several commits, that is a recurring kind of change, and the
+next agent will need it as a checklist. Write a `type: Playbook` concept under
+`$BUNDLE_DIR/operations/playbooks/`:
+
+```yaml
+type: Playbook
+title: Add a field to an Execution API datamodel
+applies_to: [api/datamodels/]          # paths whose change triggers it
+relations:
+  - {kind: requires, target: api/versions/, evidence: [f14bed9b85]}
+  - {kind: requires, target: clients/generated/, evidence: [63b615b252]}
+```
+
+Its body is an ordered `# Steps` list: what to edit, in what order, and the
+exact regeneration or migration commands. Take those commands from the repo's
+own scripts, Makefile, pre-commit hooks or contributing docs, and name the
+file you took each one from. Write a playbook only from at least three commits
+that share the partner set. One commit is an anecdote.
+
+**Guardrails.** A `type: Guardrail` concept under
+`$BUNDLE_DIR/operations/guardrails/` records a rule that must not be broken:
+no root in containers, no privileged pods, task code never touches the
+metadata database, no host-file access from a sandbox.
+
+```yaml
+type: Guardrail
+title: Containers never run as root
+applies_to: [docker/, chart/templates/]
+rule: Images set a non-root USER and pods never request privileged mode.
+motivated_by: [a1b2c3d4e5]             # the incident or decision commit
+enforced_by: [tests/charts/test_security_context.py]
+forbids:
+  - {pattern: "privileged: true", in: [chart/templates/]}
+```
+
+Guardrails are the one place an invented rule does real harm, because agents
+obey them. Propose one **only** from evidence:
+- a commit `catalogify history` flags for security, sandbox, privilege or
+  leak reasons;
+- a `SECURITY.md`;
+- an agent doc that states the rule.
+
+Always add an `open_questions` entry asking a human to confirm it, so the
+**clarify** workflow puts it in front of someone before anyone relies on it.
+A `forbids` pattern is a literal string that must not appear in non-test code
+under `in`. Choose one that matches nothing today: `catalogify verify` fails
+the bundle if it matches. It catches literal patterns only, never a semantic
+leak. Real enforcement belongs in tests, CI and the sandbox, so point
+`enforced_by` at them when they exist.
+
 ### Interrogate for open questions — don't just wait to trip over one
 
 `open_questions` should be *sought*, not only recorded when you happen to
@@ -507,6 +597,10 @@ Keep it short and aimed at a human arriving cold:
 - concept count, generator version, and the commit it was built from;
 - how to check it: `catalogify verify` resolves every cited commit, symbol
   and dependency link;
+- **how an agent should use it**: before changing a file, run
+  `catalogify find <file>` and follow any guardrail and playbook it returns.
+  Say this in one sentence that a team can paste into `AGENTS.md`. Agents that
+  read the whole bundle up front spend more tokens than they save;
 - **how to correct it.** Say that unresolved uncertainty is parked in
   `open_questions`, that `catalogify clarify` walks a human through those
   questions, and that an answer given there is marked with a sentinel and
@@ -583,10 +677,22 @@ control.
      concept: it documents vendored or imported code that is not part of
      this repository. Tell the user which subtree it came from rather than
      silently dropping it.
+   - **V9** — a relation is malformed or uses a kind outside the fixed set.
+     Use one of the five kinds, or `requires` inside a Playbook.
+   - **V10** — a relation target or `applies_to` path is not tracked. Point
+     it at tracked code or drop it.
+   - **V11** — no evidence commit touches both ends of a relation. Take
+     SHAs from `catalogify cochange --evidence` for this concept's own paths,
+     or delete the relation.
+   - **V13** — a guardrail is violated (its `forbids` pattern is in the
+     code), or its `motivated_by` / `enforced_by` doesn't resolve. A
+     violation is news for the user, not something to edit away: report
+     where it matched and leave the guardrail as written.
 
    NOTEs are arguable and need judgement rather than obedience: **V6** often
-   means a real runtime coupling, and **V7** means you described Go packages
-   as an import cycle, which the compiler forbids.
+   means a real runtime coupling, **V7** means you described Go packages as an
+   import cycle, which the compiler forbids, **V12** is a playbook without
+   steps or `requires`, and **V14** is a guardrail nothing enforces.
 4. Report to the user: concept count by type, bundle tree, validation
    result, **how many concepts carry `open_questions`**, and suggested next
    steps:

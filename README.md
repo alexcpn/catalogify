@@ -24,7 +24,7 @@ just on a delay: they rot the moment someone merges.
 `catalogify` takes the middle path. Capture the system-level structure once,
 keep it cheap to refresh, and make every claim checkable.
 
-## The four ideas
+## The five ideas
 
 ### 1. Architecture without the deep dive
 
@@ -493,6 +493,32 @@ about 5,600 tokens in total, with a 676-token service entry. Those are observed
 sizes, not a fixed token budget per service. Models, scope and chosen detail
 will change the output. The original results remain in [EXPERIMENTS.md](EXPERIMENTS.md).
 
+### 5. Rules an agent can look up: relations, playbooks, guardrails
+
+We measured whether a committed bundle helps the next agent (runs 4 and 5 in
+[EXPERIMENTS.md](EXPERIMENTS.md)). On its own, it didn't. Agents read it, then
+explored the code anyway. Told to rely on it, they spent twice the tokens.
+The steps they missed were procedural: bump the API version, regenerate the
+TypeScript client. The bundle described those files, but nothing said that
+changing one *requires* the others.
+
+So concepts can now state typed facts, each backed by commits that `verify`
+checks:
+
+- **Relations**: `changes_with`, `generated_from`, `versioned_by`, `calls`,
+  `reads_config`.
+- **Playbooks**: "if you change X, also change Y and Z, in this order". These
+  are mined from history with `catalogify cochange --evidence`.
+- **Guardrails**: rules never to break, such as no root, no privileged pods,
+  no sandbox escape, or task code never touching the metadata DB. A guardrail
+  may carry literal `forbids` patterns, and `verify` fails when one appears in
+  code. A guardrail is only proposed from evidence, and a human confirms it.
+
+Agents don't read these up front. `catalogify find <file>` returns the
+guardrails, relations and playbooks that cover one file in a few lines, at the
+moment the agent is about to change it. Whether that closes the gap is the
+next measurement. Until it's in EXPERIMENTS.md, treat it as a hypothesis.
+
 ## CLI reference: tools the agent calls
 
 The skill calls these analysis and checking commands while it works. They are
@@ -505,6 +531,8 @@ your agents. Every CLI command accepts `--help`.
 catalogify inventory                        # repo facts + git churn, as JSON
 catalogify history pkg/foo --limit 5        # the reverts and hotfixes behind a path
 catalogify cochange pkg/foo --depth 3       # what changes when this changes
+catalogify cochange pkg/foo --evidence 5    # ... with the commits to cite
+catalogify find pkg/foo/handler.go          # guardrails, relations, playbooks for one file
 catalogify validate knowledge/              # OKF v0.1 §9 conformance (structure)
 catalogify verify knowledge/                # do its claims survive the repo?
 catalogify install [--list] [--uninstall]   # manage the agent skill
@@ -512,12 +540,13 @@ catalogify install [--list] [--uninstall]   # manage the agent skill
 
 - **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, per-file commit churn, any untracked subtrees found on disk so they can be named and skipped rather than mistaken for part of the project, the agent docs (`AGENTS.md` and kin) with the directory each covers, and whether the bundle has a `GUIDANCE.md`. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
 - **`history`** returns the creation commit, recent subjects, and the flagged commits where invariants hide, each with the files it touched, its issue/PR refs and a body excerpt. A commit is flagged for a risk word in its subject (revert, deadlock, race…), for closing an issue anywhere in its message (`Fixes #842` — bug fixes whose subject sounds harmless), or for a `Fixes: <sha>` trailer naming the commit that introduced the bug. A commit that changed only test files is marked `[TEST-ONLY]` to help the agent distinguish test maintenance from production behavior. Diffs are omitted by default; `--patch` opts in, and commit text still needs review for secrets.
-- **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. This can surface candidates for shared contracts or deployment dependencies that need investigation. Co-change is a signal, not proof of a dependency.
-- **`validate`** enforces OKF §9: four error classes, twelve warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
-- **`verify`** checks commit references, source tracking, interface names and dependency evidence as described [above](#4-deterministic-verification). Findings fail the command; notes require judgement and fail only with `--strict`. It does not assess whether the prose correctly interprets the evidence.
+- **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. This can surface candidates for shared contracts or deployment dependencies that need investigation. Co-change is a signal, not proof of a dependency. `--evidence N` lists the commits behind each pair, which typed relations and playbooks cite.
+- **`find`** answers "what do I need to know before changing this file?": the guardrails covering it, its concepts and their typed relations, relations elsewhere that point at it, and playbooks with what else must change. The answer is bounded, so an agent reads a few lines instead of the bundle.
+- **`validate`** enforces OKF §9: four error classes, thirteen warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
+- **`verify`** checks commit references, source tracking, interface names and dependency evidence as described [above](#4-deterministic-verification), plus every typed relation, playbook and guardrail (V9–V14). A guardrail whose `forbids` pattern appears in code fails the command. Findings fail the command; notes require judgement and fail only with `--strict`. It does not assess whether the prose correctly interprets the evidence.
 
 Each is also installed under a bare `okf-` name (`okf-inventory`,
-`okf-history`, `okf-cochange`, `okf-validate`, `okf-verify`); the first two and
+`okf-history`, `okf-cochange`, `okf-validate`, `okf-verify`, `okf-find`); the first two and
 `okf-validate` carry over from the package's previous life as `okf_skill`.
 
 ## Uninstall
