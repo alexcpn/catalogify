@@ -34,6 +34,7 @@ RUN uv venv -q -p 3.12 /opt/afvenv \
  && VIRTUAL_ENV=/opt/afvenv uv pip install -q \
       -e './shared/observability[all]' -e ./devel-common -e ./airflow-core -e ./task-sdk
 
-ENV PATH="/opt/afvenv/bin:${PATH}" \
-    AIRFLOW_HOME=/tmp/airflow-home
+# Not on PATH: SkillEvaluator installs its own grader dependencies with
+# `python -m pip`, and this uv-made venv has no pip. The prompt names it instead.
+ENV AIRFLOW_HOME=/tmp/airflow-home
 WORKDIR /workspace/airflow
