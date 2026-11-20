@@ -10,19 +10,45 @@
 modules, APIs, data models and operations. Your existing coding agent reads the
 evidence and writes the catalog; the CLI only collects facts and checks claims.
 
-- [QuickStart:Install Skill and Use](#quickstart-agent-skill)
-- [The Four ideas](#the-four-ideas)
+- [Quickstart: install the skill and use it](#quickstart-agent-skill)
+- [The five ideas](#the-five-ideas)
+- [Across many repositories](#across-many-repositories)
 - [Recorded examples](#worked-examples)
 
 ## Why this exists
 
-Agents stall on unfamiliar code. They need a map before they can navigate: who
-owns the behavior, how the pieces fit, what already broke once. Full-repo
-context dumps don't solve this — they drown the model. Hand-written wikis do,
-just on a delay: they rot the moment someone merges.
+Agents stall on unfamiliar code. Before an agent can change anything it has to
+answer two different questions:
 
-`catalogify` takes the middle path. Capture the system-level structure once,
-keep it cheap to refresh, and make every claim checkable.
+- **Where does this change land?** Which components, contracts and owners does
+  it touch? That needs a map of the whole system, small enough to read in full
+  before deciding where to look.
+- **What changes inside them?** That needs code search, interfaces, tests and
+  the local gotchas, read only for the components that matter.
+
+The second question is well served already: ripgrep, git grep and AST tools
+work fine once the agent knows where to look. The first one isn't. The usual
+shortcuts don't give that map:
+
+- **Search over the code (RAG)** finds text that looks like the question. It
+  doesn't tell you who owns a responsibility.
+- **A full code graph** says what breaks if you change a function, but it grows
+  with every line and says nothing about what a service is *for*.
+- **A wiki** goes stale, and a stale wiki is worse than none: the agent trusts
+  it and builds the wrong behaviour cleanly.
+
+There is also knowledge the current code doesn't hold. Code shows what runs
+today. It doesn't show why an earlier design was reverted, or which
+hardcoded value is protecting a customer from an old incident.
+
+`catalogify` builds that map. It captures the system-level structure once,
+keeps it cheap to refresh, pulls the lessons out of commit history, and makes
+every claim checkable against the repo.
+
+It describes the system as it is, workarounds included. It won't make a
+tangled design any better, and an agent that reads a precise map of code nobody
+can test will just change that code faster. It pays off most where tests can
+catch the agent's mistakes.
 
 ## The five ideas
 
@@ -114,6 +140,59 @@ exist in the code. It does not prove the prose correctly interprets the
 evidence, or that the catalog covers everything. Current behavior is grounded
 in source; historical lessons cite commits; human clarifications are recorded
 separately. A passing check still needs review.
+
+Because both commands exit non-zero on failure, they can run in CI on every
+merge, so a citation that stops matching the code fails the build instead of
+misleading the next agent. See [Checking the catalog in CI](#checking-the-catalog-in-ci).
+
+### 5. Rules an agent can look up: relations, playbooks, guardrails
+
+We measured whether a committed bundle helps the next agent (runs 4 and 5 in
+[EXPERIMENTS.md](EXPERIMENTS.md)). On its own, it didn't. Agents read it, then
+explored the code anyway. Told to rely on it, they spent twice the tokens.
+The steps they missed were procedural: bump the API version, regenerate the
+TypeScript client. The bundle described those files, but nothing said that
+changing one *requires* the others.
+
+So concepts can now state typed facts, each backed by commits that `verify`
+checks:
+
+- **Relations**: `changes_with`, `generated_from`, `versioned_by`, `calls`,
+  `reads_config`.
+- **Playbooks**: "if you change X, also change Y and Z, in this order". These
+  are mined from history with `catalogify cochange --evidence`.
+- **Guardrails**: rules never to break, such as no root, no privileged pods,
+  no sandbox escape, or task code never touching the metadata DB. A guardrail
+  may carry literal `forbids` patterns, and `verify` fails when one appears in
+  code. A guardrail is only proposed from evidence, and a human confirms it.
+
+Agents don't read these up front. `catalogify find <file>` returns the
+guardrails, relations and playbooks that cover one file in a few lines, at the
+moment the agent is about to change it.
+
+**Where this helps: code whose procedures live in people's heads.** That is
+most proprietary code. Nobody wrote down that a change to the checkpoint
+format needs a reader for the old one, or that the billing table is also read
+by a nightly job in another team's repo. History supplies part of it, as
+`cochange` partners and reverts. The rest comes from people: the **clarify**
+workflow asks the owners the questions the agent couldn't settle, and a
+guardrail goes in only after a human confirms it. Those answers are kept
+across updates, and `find` serves them back at the moment someone edits the
+file.
+
+Well-documented open source gains little, because the repo already says
+these things. Eval of this on open-source runs show exactly that:
+
+- **mitmproxy** (run 7), whose docs only say how to run tests: every plan
+  that used `find` included the generated web options file. One of three
+  plans without it missed that file (1.00 against 0.93, same token cost).
+  That is one plan per arm, so it is a signal, not a measurement.
+- **Airflow** (run 6) documents this exact procedure in its own `AGENTS.md`.
+  Plans were no better and used 56% more input tokens.
+- **Spinnaker** (run 8) ships an `AGENTS.md` with a service map. `find`
+  changed nothing; reading the bundle used 17% fewer input tokens and removed
+  one wrong service.
+
 
 ## Quickstart: Agent skill
 
@@ -280,6 +359,33 @@ questions, and explanatory prose without changing which concepts are selected.
 An explicit `detail: detailed` request in your agent prompt or Spec Kit command
 overrides the config for that run without editing it.
 
+## Across many repositories -Creating a Meta Repo
+
+No single repository sees the whole system. What crosses repo boundaries
+(gRPC APIs, custom resources, message topics, shared schemas and config) is
+only visible from above, and no planning agent can read a hundred repos of
+code to find where a feature lands.
+
+catalogify works at the repository level: each repo commits its own
+`knowledge/`. On a larger estate, the pattern we use on top of that is a
+separate map repository with no code in it:
+
+- an `index.md` and one routing page per domain, saying which repo and team
+  own each capability;
+- the contracts that cross repos, derived from protobufs, CRDs and schemas
+  where they are explicit;
+- links into each repo's `knowledge/` bundle for drill-down.
+
+A planning agent reads the map to decide which components a feature touches,
+and then works inside each repo with that repo's bundle, `AGENTS.md`, code
+search and tests. The map says where; the repo says how. Rebuild the map in
+CI on every merge rather than by hand, because a hand-kept map goes stale and
+a stale map sends work to the wrong place.
+
+catalogify doesn't generate this map; it supplies the per-repo bundles it
+links to. Implicit coupling, such as two services sharing a table or a config
+key, can't be derived from either, and has to be found/documented by people first. 
+
 ## Configuration
 
 Everything works with no config. To change the bundle directory, resource URI
@@ -368,6 +474,21 @@ skills directory (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`,
 `~/.agents/skills`). Use `--agents claude,cursor` to target specific agents.
 The bundled `install.sh` / `install.ps1` do both installation steps, install
 `uv` if needed, and fall back to `pip install --user`.
+
+## Checking the catalog in CI
+
+`validate` exits 1 on structural errors and `verify` exits 1 on findings
+(`--strict` adds notes), so both work as a merge gate:
+
+```bash
+catalogify validate knowledge/
+catalogify verify knowledge/
+```
+
+Check out the full history (for example `fetch-depth: 0` with
+`actions/checkout`). `verify` resolves commit SHAs, and a shallow clone
+doesn't have them. The gate catches citations that no longer match the code.
+It doesn't refresh the catalog; run the update workflow for that.
 
 ## Requirements
 
@@ -492,32 +613,6 @@ and verify its references. The original coarse run produced nine concepts,
 about 5,600 tokens in total, with a 676-token service entry. Those are observed
 sizes, not a fixed token budget per service. Models, scope and chosen detail
 will change the output. The original results remain in [EXPERIMENTS.md](EXPERIMENTS.md).
-
-### 5. Rules an agent can look up: relations, playbooks, guardrails
-
-We measured whether a committed bundle helps the next agent (runs 4 and 5 in
-[EXPERIMENTS.md](EXPERIMENTS.md)). On its own, it didn't. Agents read it, then
-explored the code anyway. Told to rely on it, they spent twice the tokens.
-The steps they missed were procedural: bump the API version, regenerate the
-TypeScript client. The bundle described those files, but nothing said that
-changing one *requires* the others.
-
-So concepts can now state typed facts, each backed by commits that `verify`
-checks:
-
-- **Relations**: `changes_with`, `generated_from`, `versioned_by`, `calls`,
-  `reads_config`.
-- **Playbooks**: "if you change X, also change Y and Z, in this order". These
-  are mined from history with `catalogify cochange --evidence`.
-- **Guardrails**: rules never to break, such as no root, no privileged pods,
-  no sandbox escape, or task code never touching the metadata DB. A guardrail
-  may carry literal `forbids` patterns, and `verify` fails when one appears in
-  code. A guardrail is only proposed from evidence, and a human confirms it.
-
-Agents don't read these up front. `catalogify find <file>` returns the
-guardrails, relations and playbooks that cover one file in a few lines, at the
-moment the agent is about to change it. Whether that closes the gap is the
-next measurement. Until it's in EXPERIMENTS.md, treat it as a hypothesis.
 
 ## CLI reference: tools the agent calls
 
