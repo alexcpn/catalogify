@@ -162,8 +162,9 @@ and the discrepancy becomes one.
      ```
 
      When a `GUIDANCE.md` was used, add
-     ``Guidance: `<first 12 hex of its sha256>` `` on the line directly
-     after `Commit:` — the validator rejects it anywhere else (E4).
+     ``Guidance: `GUIDANCE_SHA12` `` on the line directly after `Commit:`,
+     where `GUIDANCE_SHA12` is the first 12 hex digits of its sha256. The
+     validator rejects it anywhere else (E4).
 
 8. **Validate and report.** Run
 

@@ -1,0 +1,29 @@
+{
+  "name": "catalogify",
+  "displayName": "catalogify",
+  "version": "0.10.1",
+  "description": "Turn a repository into a knowledge catalog an AI agent can afford to read: Open Knowledge Format concepts mined from code and git history, with every claim checked against the repo.",
+  "author": {
+    "name": "Alex Punnen"
+  },
+  "homepage": "https://github.com/alexcpn/catalogify",
+  "repository": "https://github.com/alexcpn/catalogify",
+  "license": "MIT",
+  "logo": "assets/logo.svg",
+  "keywords": [
+    "knowledge-base",
+    "documentation",
+    "okf",
+    "open-knowledge-format",
+    "git-history",
+    "brownfield",
+    "codebase"
+  ],
+  "category": "developer-tools",
+  "tags": [
+    "documentation",
+    "knowledge",
+    "git"
+  ],
+  "skills": "./skills/"
+}

@@ -1,30 +1,122 @@
-# catalogify
+# Catalogify - Context is Everything
 
-**Turn a repository into a knowledge catalog your AI agent can afford to read.**
+**A codebase knowledge base the agent can actually afford to read — grounded in git, held to a commit.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![SkillSpector 2.12.0: SAFE 0/100, 22/22 checks passed, 2026-11-05](https://img.shields.io/static/v1?label=SkillSpector%202.12.0&message=SAFE%200%2F100%20%C2%B7%2022%2F22%20checks%20passed%20%C2%B7%202026-11-05&color=brightgreen)](https://github.com/NVIDIA/SkillSpector)
+[![Snyk Agent Scan 0.6.10: no risks, 2026-11-05](https://img.shields.io/static/v1?label=Snyk%20Agent%20Scan%200.6.10&message=no%20risks%20%C2%B7%202026-11-05&color=brightgreen)](https://labs.snyk.io/experiments/skill-scan/)
 
-`catalogify` generates an [Open Knowledge Format (OKF v0.1)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
-bundle: a directory of cross-linked markdown concepts with YAML frontmatter
-describing a codebase's services, modules, APIs, data models and operations.
-Where git is available it mines the history for the reasoning behind the code,
-and whatever it cannot establish it parks as an open question rather than
-inventing an answer.
+`catalogify` turns a repository into an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
+(OKF v0.1) bundle: linked Markdown concepts covering architecture, services,
+modules, APIs, data models and operations. Your existing coding agent reads the
+evidence and writes the catalog; the CLI only collects facts and checks claims.
 
-- **Monorepo or single repo.** One `Service` concept per deployable unit, scoped by folder — a repo with hundreds of services produces the same directory layout as a single-service repo, just wider.
-- **Cheap on large codebases.** Scanning 25,917 files and 500,022 lines of Kubernetes takes 2.1 seconds. A service entry is ~676 tokens whether the service is 10k lines or 100k.
-- **Git optional.** History mining and incremental updates need it; everything else does not.
+- [QuickStart:Install Skill and Use](#quickstart-agent-skill)
+- [The Four ideas](#the-four-ideas)
+- [Recorded examples](#worked-examples)
 
-It installs as a portable **Agent Skill**, so it works in Claude Code, Cursor,
-OpenAI Codex, and anything else that reads the open `.agents/skills` standard.
-Your agent follows the skill to generate, update, clarify, or validate a catalog.
-The package also provides a **CLI** for repository scans, history analysis,
-bundle checks, and skill installation.
-For [Spec Kit](https://github.com/github/spec-kit) projects the same workflows
-ship as slash commands, built from this repository
-([below](#spec-kit-extension)).
+## Why this exists
 
-## Quickstart: agent skill
+Agents stall on unfamiliar code. They need a map before they can navigate: who
+owns the behavior, how the pieces fit, what already broke once. Full-repo
+context dumps don't solve this — they drown the model. Hand-written wikis do,
+just on a delay: they rot the moment someone merges.
+
+`catalogify` takes the middle path. Capture the system-level structure once,
+keep it cheap to refresh, and make every claim checkable.
+
+## The four ideas
+
+### 1. Architecture without the deep dive
+
+The catalog describes high level architecture, service boundaries, key interfaces,
+data and dependencies — enough for the agent to decide where to look, not
+enough to replace the source. Deep source scan is left to harness's efficient
+tools like [ripgrep](https://github.com/burntsushi/ripgrep), git grep, and AST parsers
+like [Graphify](https://github.com/Graphify-Labs/graphify)
+
+This matters on large repos and monorepos with hundreds of microservices. Bounded inventories
+and history keeps the context size manageable. Full source scans, AST parse trees and the like
+exhausts even the largest context sizes.
+
+In a recorded Apache Airflow run, **1.8 million lines of code** produced 17
+concepts totalling about **9,700 tokens**. That was a coarse overview, not
+exhaustive coverage — a catalog covering hundreds of services will be larger, 
+but would still fit into the model context.
+
+### 2. A wiki with a DB like transaction log 
+
+All wikis go stale. This one does too, unless there is an automated pipeline that updates 
+with every commit. However even without a pipeline, this wiki freshness or staleness is clearly 
+known. It keeps a transaction log with the commit SHA of the update. Comparing with the HEAD, an Agent can easily
+understand whether the wiki needs update, and it can do so with the git diffs.
+
+OKF keeps knowledge in ordinary Markdown with YAML frontmatter, concept links
+and indexes. You can browse it on GitHub, review its diffs and commit it beside
+the source.
+
+Each concept lists its `source_files`; the bundle's `log.md`
+records the repository commit each update covered:
+
+```markdown
+## 2026-10-06
+Commit: `<repository-sha>`
+* **Update**: Refreshed the payment service for the retry behavior change.
+```
+
+When you ask for an update, the agent compares that SHA with `HEAD`, diffs the
+commits between them, and maps changed paths to concepts. Renames update source
+mappings; removed components become deprecated; significant new code becomes a
+candidate for a new concept. A rewritten history triggers a full re-scan instead
+of trusting the old commit range.
+
+The wiki is treated like code: versioned, diffable, checkpointed. The log is a
+checkpoint for incremental review, not proof that every sentence is current —
+uncommitted edits aren't in the diff. Invoke the update workflow after code
+changes, before you lean on the catalog.
+
+Human answers from the **clarify** workflow carry protection markers; updates
+preserve them. Changes to your `GUIDANCE.md` re-check the whole catalog against
+the new guidance, even when the code commit is unchanged.
+
+### 3. Implicit knowledge from commit history
+
+Code is the source of truth for what the system *does*. Commit history records
+what the team *learned*: a retry that corrupted data, a migration that had to
+be reverted, a race fixed years before the current maintainers arrived. Those
+lessons rarely survive in comments, ADRs or the heads of people who left.
+
+`catalogify history` surfaces risk-related commits, issue-closing messages and
+`Fixes:` trailers — with body excerpts and the files each commit touched. The
+agent investigates that evidence, follows relevant reverts back to the change
+they undid, and writes supported lessons with commit citations. `cochange`
+surfaces paths that repeatedly change together, hinting at relationships no
+import graph shows.
+
+Historical behavior may have changed again. The agent reconciles each lesson
+with current code and leaves unresolved questions explicit rather than
+guessing. Git can only supply reasoning somebody recorded; the clarify workflow
+captures what still needs a human.
+
+### 4. Deterministic verification
+
+The agent writes the prose; `catalogify verify` checks the claims — no LLM in
+the loop. In Python and plain git commands it resolves backtick-quoted commit
+SHAs and confirms they touched the concept's declared source files, rejects
+citations to commits that only changed tests, `git grep`s unambiguous interface
+names from concept tables in tracked non-test source, and flags source paths
+that aren't in git at all. Findings fail the command (`--strict` makes notes
+fail too). `catalogify validate` separately enforces OKF structure, links and
+log format.
+
+This catches concrete classes of hallucination — invented SHAs, citations to
+unrelated fixes, test-only evidence for production gotchas, names that don't
+exist in the code. It does not prove the prose correctly interprets the
+evidence, or that the catalog covers everything. Current behavior is grounded
+in source; historical lessons cite commits; human clarifications are recorded
+separately. A passing check still needs review.
+
+## Quickstart: Agent skill
 
 Install the package from PyPI, then copy its skill into your agent:
 
@@ -34,8 +126,7 @@ catalogify install
 ```
 
 `uv tool install catalogify` uses the published PyPI version. **To test changes
-on `main` before a release**, including the new `detail` setting, install from
-GitHub instead:
+on `main` before a release**, install from GitHub instead:
 
 ```bash
 uv tool install --force git+https://github.com/alexcpn/catalogify
@@ -58,8 +149,24 @@ Use catalogify to validate knowledge/ and verify its claims against the repo.
 Run the prompts in order. The first creates `knowledge/`; the second asks you
 about facts the agent could not establish. Your answers become part of the
 catalog and survive later updates. You can skip a question and leave it open.
-After code changes, ask your agent to update the catalog. The catalogify skill
-handles the supporting terminal commands for you.
+After committing code changes, ask your agent to check and refresh the catalog:
+
+```text
+Use catalogify to update knowledge/ from its last recorded commit, then validate and verify it.
+```
+
+The skill handles the supporting terminal commands. Run this before using the
+catalog to plan another change; freshness checks happen when you invoke the
+workflow.
+
+**Tell it what the code doesn't say.** Before the first run, or at any point
+later, put a `GUIDANCE.md` in `knowledge/`. The agent reads it on every run and
+never edits it. It helps most with things no scan can find, such as a pipeline
+whose stages never import each other and only meet through a queue or a table.
+Name the stages in order and ask for one Pipeline concept that walks them. If
+you add or change the file after the catalog exists, the next update checks
+every concept against it and fills in what's missing. More in
+[Steering a bundle](#steering-a-bundle).
 
 For deeper explanations, add `detail: detailed` to the generate or update
 prompt. This changes the depth of each concept without adding more concepts:
@@ -70,24 +177,33 @@ Use catalogify to generate a knowledge catalog for this repo. Use detail: detail
 
 [![asciicast](https://asciinema.org/a/xSfPT9wUxCD78mz0.svg)](https://asciinema.org/a/xSfPT9wUxCD78mz0)
 
+## Cursor plugin
+
+This repository is also a Cursor plugin marketplace. The plugin lives in
+[`plugins/catalogify`](plugins/catalogify) and carries the same skill that
+`catalogify install` copies. It does not install the CLI. When `catalogify` is
+not on `PATH`, or its version differs from the skill's, the skill runs the
+commands as `uvx catalogify@<version> …` instead, so you need either
+[uv](https://docs.astral.sh/uv/) or a matching `uv tool install catalogify`.
+
+To try it before it is listed, link it into Cursor's local plugin directory
+and reload Cursor:
+
+```bash
+git clone https://github.com/alexcpn/catalogify
+ln -s "$PWD/catalogify/plugins/catalogify" ~/.cursor/plugins/local/catalogify
+```
+
+`plugins/catalogify` is generated. Edit the skill sources and run
+`python3 integrations/cursor/build.py`; CI fails if the two drift apart.
+
 ## Spec Kit extension
 
-If your project already uses [Spec Kit](https://github.com/github/spec-kit),
-install the extension instead of the standalone skill. It supplies the same
-workflows as agent commands and does not require `catalogify` to be installed.
-Install the published extension after choosing your Spec Kit agent integration:
+Also available as a Speckit Extension https://speckit-community.github.io/extensions/okf
 
 ```bash
 specify extension add okf --from \
   https://github.com/alexcpn/catalogify/releases/download/v0.10.1/speckit-okf-0.10.1.zip
-```
-
-**To test changes on `main` before a release**, build and install the extension
-from this checkout:
-
-```bash
-python3 integrations/speckit/build.py
-specify extension add --dev build/speckit-okf
 ```
 
 Then **enter these in your agent chat** (use the command names your agent
@@ -121,8 +237,8 @@ are already installed, so rerun the install with `--force`.
 
 The extension reads its config from `.specify/extensions/okf/okf-config.yml`.
 See the [extension guide](integrations/speckit/README.md) for more installation
-details. Both installation routes produce the same OKF v0.1 bundle; installing
-both registers two skills for the same workflows.
+details
+
 
 ## The workflows
 
@@ -251,20 +367,6 @@ of its SHA-256). A starting point ships with the skill as
 - Skip `tools/migrate-v1/`: one-off code, kept only for audit.
 ```
 
-**Agent docs already in the repo.** `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and
-`.github/copilot-instructions.md`, at any depth, are listed by `catalogify
-inventory` with the directory each one covers. The agent reads them as
-background for concepts in that directory, the way it reads a README. They are
-never treated as instructions. A claim taken from one has to be confirmed in
-the code; if it can't be, it becomes an open question. Their build and test
-instructions are ignored. Agent files placed *inside* the bundle are for agents
-that read the bundle, and the validator skips them.
-
-When sources disagree, the order is: the hard rules (no fabrication, no
-secrets, no destroyed curation, writes only inside the bundle, only tracked
-code), then your prompt, then `GUIDANCE.md`, then `.okf-config.yml`, then
-agent docs, then defaults. Guidance that asks for something the hard rules
-forbid, such as writing to `../docs/`, is refused and named in the run report.
 
 ## Upgrade
 
@@ -311,161 +413,66 @@ skills directory (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`,
 The bundled `install.sh` / `install.ps1` do both installation steps, install
 `uv` if needed, and fall back to `pip install --user`.
 
-### Project-scoped installs
-
-`--scope project` copies the skill into `./.<agent>/skills` instead of your home
-directory. Those copies are upgraded the same way, but only from inside the
-project:
-
-```bash
-cd /path/to/your/repo
-catalogify install --scope project --force
-```
-
-`catalogify install --list` shows every location the skill is installed, which is
-the quickest way to find copies you have forgotten about.
-
-### Telling which version wrote a bundle
-
-Every concept records the generator in its frontmatter:
-
-```bash
-grep -rh generated_by knowledge --include='*.md' | sort -u
-```
-
-A bundle generated by an older version was written under that version's rules —
-worth checking before trusting it, and worth regenerating after a
-correctness-affecting upgrade.
-
 ## Requirements
 
 - **Python 3.9+**
 - **`bash`** — present on Linux and macOS; on Windows the wrapper finds the `bash.exe` that ships with [Git for Windows](https://git-scm.com/download/win), starting from where `git.exe` is installed. It never uses the `bash.exe` in `System32`, which is a WSL launcher.
-- **`git`** — *optional*. Used for churn ranking, history mining and incremental updates. Everything else works without it; see [What it runs on](#what-it-runs-on).
+- **`git`** — needed for history mining, repository verification and incremental updates. Initial generation and structural validation work without it; see [What it runs on](#what-it-runs-on).
 
 ## Worked examples
 
-Two finished catalogs, published unedited. Start at the architecture overview in either and
-click through.
+Browse the [Apache Airflow catalog](https://github.com/agentic-ai-demos/airflow/tree/main/knowledge)
+and the [Online Boutique catalog](https://github.com/agentic-ai-demos/microservices-demo/tree/main/knowledge).
+The figures below describe recorded runs; the linked catalogs may change later.
 
-| | [**Apache Airflow**](https://github.com/agentic-ai-demos/airflow/tree/main/knowledge) | [**Online Boutique**](https://github.com/agentic-ai-demos/microservices-demo/tree/main/knowledge) |
-|---|---:|---:|
-| Lines of code | **1,805,835** | 8,103 |
-| Tracked files | 13,954 | 392 |
-| Commits of history | 40,823 | 2,690 |
-| Languages | Python, TypeScript, Go, JS | Go, C#, Node, Python, Java |
-| Reading the source would cost | ~17,900,000 tokens | ~70,000 tokens |
-| **The catalog it produced** | **17 concepts, ~9,700 tokens** | **20 concepts, ~11,600 tokens** |
-| Compression | **1,838 : 1** | 6 : 1 |
-| Fresh input to generate it | **101,559 tokens** | 117,850 tokens |
-| Wall clock | 6 min 29 s | 8 min 19 s |
-
-Read the last four rows together. Airflow is **1.8 million lines of code** — 223 times the size
-of Online Boutique — and its catalog is *smaller*, took *fewer* uncached tokens, and finished
-*faster*.
-
-That is the whole property. Cost tracks the number of things worth naming, not the size of the
-tree, so the catalog stays inside one context window no matter how big the repository gets.
-Over 91% of each run was served from cache, so the billed figure is lower again.
-
-Every run behind those figures — including the ones that went wrong — is recorded in
-[EXPERIMENTS.md](EXPERIMENTS.md), with what it cost and what the checker found.
-
-## Why it exists
-
-Giving an agent "context on the codebase" is two problems.
-
-**Routing** — *which of our 90 services does this spec touch?* Wide and
-shallow. You need a little about everything.
-
-**Reaching** — *inside that service, what changes?* Narrow and deep. You need
-everything about a little.
-
-A code graph such as [Graphify](https://github.com/Graphify-Labs/graphify) —
-which parses your code with tree-sitter and builds a queryable graph of every
-symbol and call edge — is excellent at reaching and will beat prose every
-time. Ask it "what breaks if I change this function" and it answers precisely.
-`catalogify` targets routing instead, where the winning property is being
-small enough that an agent can read the whole estate in one call.
-
-The two compose well: route with catalogify to pick the services, then run
-Graphify inside the one you picked. They are not alternatives.
-
-Measured on `pkg/kubelet` from `kubernetes/kubernetes` (108,648 lines of Go),
-with Graphify run over the same directory:
-
-| Artifact | Size | Tokens |
+| Recorded run | Apache Airflow | Online Boutique |
 | --- | ---: | ---: |
-| Graphify `graph.json` | 14.5 MB | 3,813,486 |
-| Graphify `wiki/` (446 articles) | 1,004 KB | 256,968 |
-| catalogify bundle (9 concepts) | 21.9 KB | 5,596 |
-| **catalogify service entry** | **2.6 KB** | **676** |
+| catalogify version | 0.8.0 | 0.7.0 |
+| Concepts | 17 | 21 |
+| Concept text, approximate tokens | **9,700** | **13,300** |
+| Fresh input to generate | 101,559 tokens | 117,850 tokens |
+| Total generation tokens, including cached input and output | 1,207,172 | 1,600,683 |
+| Wall clock | 6 min 29 s | 8 min 19 s |
+| Final verify findings | 0 | 0 |
 
-At 676 tokens per service, a 90-service catalog is roughly **61,000 tokens**
-and fits in one call alongside the specification. See [Reproducing the benchmark](#reproducing-the-benchmark)
-to reproduce these numbers.
+Airflow's measured source tree was roughly **1.8 million lines**. Its catalog
+was smaller than Boutique's because the run selected a coarser overview.
+These runs show that a large source tree can produce a small context artifact;
+they do not establish complete coverage or a fixed cost for every repository.
+Concept token estimates use bytes divided by four. Generation usage includes
+repeated input, with over 91% of input served from cache in both runs.
 
-## How this relates to what else exists
-
-The brownfield problem is well recognised, and several tools address parts of
-it. They are worth naming, because they solve a different half.
-
-**[Brownfield Bootstrap](https://speckit-community.github.io/extensions/brownfield)
-and [BrownKit](https://github.com/github/spec-kit/issues/2510)** scan an
-existing project and configure the harness to match it: a constitution derived
-from your actual conventions, spec and plan templates matched to the detected
-stack, module boundaries, capability and risk discovery. Both work by static
-analysis of the working tree. **Neither reads your git history**, which is where
-the invariants live — the reverts, the hotfixes, the rule somebody learned at
-2am and never wrote down. catalogify starts there.
-
-**Repomix and similar context loaders** put the codebase in front of the model
-before work begins. That is the right instinct and it is bounded by arithmetic:
-Airflow's source is roughly 17.9 million tokens. Its catalog is 9,700.
-
-**Code graphs** (Graphify, tree-sitter indexers) answer *reaching* — what breaks
-if I change this function — and answer it better than prose ever will. See
-above: the two compose.
-
-**Agentic search**, as Claude Code does it, has largely replaced precomputed
-indexes for the reaching problem. That is one reason catalogify does not build
-one. It operates a layer above, on the question you have to answer before
-searching is worth anything: which parts of this system does this change touch?
-
-What is left uncovered by all of the above is a durable, cheap description of
-the estate, grounded in history and checkable against the code. That is the
-only thing this tool tries to be.
+The initial Boutique run produced **17 verification findings**. A later run
+with the verify-and-fix workflow ended with zero. That measures removal of
+specific detectable errors, not proof that all prose is correct.
+[EXPERIMENTS.md](EXPERIMENTS.md) preserves the runs, costs, findings and caveats.
 
 ## What it runs on
 
-**Monorepos and single repos alike.** Concepts are scoped by folder, so a
-repository holding hundreds of services gets one `Service` concept per
-deployable unit and its own `modules/`, `apis/` and `data/` concepts
-underneath — the same directory layout a single-service repo produces, just
-wider. Point it at the whole tree or at one subdirectory.
+Use it on a single repository, a monorepo, or a selected subtree. Concepts are
+scoped by folder, with one Service concept per deployable unit at the chosen
+scope. On large monorepos, tune the inventory cap, exclusions and concept
+granularity rather than assuming the whole catalog will fit in one prompt.
 
-**Large codebases stay cheap**, because the catalog describes the repo rather
-than reproducing it. Scanning all of `kubernetes/kubernetes` — **25,917 files
-and 500,022 lines of Go** — takes **2.1 seconds** and yields a 56 KB inventory
-(~14,000 tokens) for the agent to plan from. Cost scales with the number of
-things worth naming, not with lines of code: a service entry is ~676 tokens
-whether the service is 10k lines or 100k.
+The recorded Kubernetes inventory scanned 25,917 files and 500,022 lines of Go
+in 2.1 seconds, producing 56 KB of JSON. That is collection time, not the time
+needed for the agent to generate or review a catalog.
 
-**With or without git.** History mining is a bonus, not a requirement:
+Git is optional for initial generation and structural validation. History
+mining, repository verification and incremental updates require it.
 
-| | With git | Without git |
+| Capability | With git | Without git |
 | --- | --- | --- |
-| Inventory, concepts, indexes, validation | yes | yes |
-| Churn ranking, the "why" from reverts and hotfixes | yes | — |
-| Commit citations, `resource:` URLs from the remote | yes | — |
-| Incremental `update` | yes | — (re-run `generate`) |
-| Conformant bundle | yes | yes |
+| Inventory, concepts, indexes, structural validation | yes | yes |
+| Churn ranking and lessons from commit history | yes | unavailable |
+| Verification against git and tracked source | yes | skipped |
+| Incremental update from log.md | yes | unavailable |
 
-Outside a repository the inventory reports `git.is_git_repo: false`, `history`
-prints a notice and exits cleanly, timestamps come from file modification
-times, and `log.md` records ``Commit: `none` ``, which the validator accepts.
-The agent is told to raise more `open_questions` in that case, since without
-history the reasoning behind the code can only come from you.
+Outside git, the log records ``Commit: `none` `` and timestamps come from file
+modification times. There is no commit baseline to diff against, so the agent
+must explain that limitation and preserve human curation when planning a refresh.
+Use a full-history checkout for history mining; shallow clones limit what can
+be recovered, and the history command warns about them.
 
 ## What a concept looks like
 
@@ -498,73 +505,37 @@ the commit log by following a revert back to the commit it reverted.
 updates possible. `open_questions` is where uncertainty goes instead of into
 prose. Both are producer extension fields permitted by OKF §4.1.
 
-## Why mine history at all
+## Working with human knowledge
 
-The gotcha in that example exists in no comment, no docstring, and no design
-document — in Kubernetes, a project with KEPs, a design-proposals archive, and
-reviewers who demand rationale. It survived only as a revert.
+The workflow asks the agent to put uncertainty in `open_questions`, then use
+**clarify** to capture your answers. Updates preserve those answers and other
+human curation. Removed code leads to deprecated concepts rather than deleted
+pages, keeping existing links and historical context available.
 
-That is not an oversight, it is the normal condition. Michael Polanyi called it
-tacit knowledge in 1966: *"we know more than we can tell."* Peter Naur applied
-it to software in [*Programming as Theory Building*](https://pages.cs.wisc.edu/~remzi/Naur.pdf)
-(1985), arguing that the real product of programming is the **theory** of the
-system held in the developers' heads, and that program text and documentation
-are insufficient carriers of it. A program whose original team has dispersed is,
-in his terms, dead — and a new team patching it produces characteristically
-wrong fixes that erode the system's conceptual integrity.
-
-That is precisely the position an AI agent is in on first contact with your
-repository. It arrives after the team has dispersed, holding the artefacts and
-none of the theory.
-
-Nor does writing a specification escape it. Fred Brooks, in *No Silver Bullet*:
-*"the complexity of software is an essential property, not an accidental one,"*
-so *"descriptions of a software entity that abstract away its complexity often
-abstract away its essence."* That ceiling applies whether a human or a model
-wrote the spec.
-
-Commit history is a narrow exception. Nobody writes a revert as documentation;
-they write it because production broke, leaving a dated, attributed, immutable
-record of a place where the theory and the code disagreed. `catalogify history`
-goes looking for exactly those.
-
-This recovers fragments, not the theory. For everything still missing, the
-generator raises an `open_question` and the clarify workflow asks a human while
-there is still a human to ask.
-
-## Safety properties
-
-- **Never guesses.** Unverifiable facts become `open_questions`, resolved by the clarify workflow and marked with `<!-- clarified: ... -->` sentinels that later updates will not overwrite. Your answer outranks the machine's inference permanently.
-- **Never deletes curation.** Removed code marks a concept `status: deprecated` rather than deleting it. Human prose survives every refresh.
-- **Never emits secrets.** Config values are described by shape, never value, including from history. The validator flags anything that slips through (W5).
-- **Never touches source code.** All writes stay inside the bundle directory.
+Generation and updates write inside the bundle directory. The agent is
+instructed to describe configuration shapes without copying secret values;
+the validator also scans for possible secrets. These are workflow safeguards
+and checks, not a guarantee that generated documentation needs no review.
 
 ## Reproducing the benchmark
 
-To reproduce the table above:
+The Kubernetes measurements used commit `d5ccf7968e5`. To inspect the same
+source revision and run the collection tools:
 
 ```bash
 git clone --filter=blob:none --no-tags \
   https://github.com/kubernetes/kubernetes.git k8s
-
-# Graphify, for comparison
-pip install graphifyy
-graphify update k8s/pkg/kubelet
-cd k8s/pkg/kubelet && graphify export wiki
-wc -c graphify-out/graph.json          # 15,253,944
-cat graphify-out/wiki/*.md | wc -c     # 1,027,874
-
-# catalogify
-cd ../..                               # back to the k8s repo root
-catalogify inventory                   # 2.1s, 56 KB of JSON
+cd k8s
+git checkout d5ccf7968e5
+catalogify inventory
 catalogify history pkg/kubelet/cm --limit 3
-
-# then ask your agent to generate and validate the catalog
 ```
 
-Token counts are bytes ÷ 4. Measured against `kubernetes/kubernetes` at commit
-`d5ccf7968e5`. The structural graph was built AST-only (no API key), so its
-wiki lacks LLM community labels.
+Then ask your agent to generate a catalog scoped to `pkg/kubelet`, validate it
+and verify its references. The original coarse run produced nine concepts,
+about 5,600 tokens in total, with a 676-token service entry. Those are observed
+sizes, not a fixed token budget per service. Models, scope and chosen detail
+will change the output. The original results remain in [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## CLI reference: tools the agent calls
 
@@ -585,10 +556,10 @@ catalogify install [--list] [--uninstall]   # manage the agent skill
 ```
 
 - **`inventory`** writes JSON: file tree, languages, entry points, dependency manifests, API definitions, schemas, CI/CD, docs, ADRs, per-file commit churn, any untracked subtrees found on disk so they can be named and skipped rather than mistaken for part of the project, the agent docs (`AGENTS.md` and kin) with the directory each covers, and whether the bundle has a `GUIDANCE.md`. On the full Kubernetes tree (500k lines, 25,917 files) it takes 2.1 seconds and produces 56 KB.
-- **`history`** returns the creation commit, recent subjects, and the flagged commits where invariants hide, each with the files it touched, its issue/PR refs and a body excerpt. A commit is flagged for a risk word in its subject (revert, deadlock, race…), for closing an issue anywhere in its message (`Fixes #842` — bug fixes whose subject sounds harmless), or for a `Fixes: <sha>` trailer naming the commit that introduced the bug. A commit that changed only test files is marked `[TEST-ONLY]` so a "fix goroutine leak in foo_test.go" is never mistaken for a production invariant. Diff-free by default so historical secrets do not leak; `--patch` opts in.
-- **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. Two services can be coupled through a wire contract, a shared schema or a deployment ordering rule while sharing no import at all, and that relationship exists in no import graph, no call graph and no snapshot of the working tree. It shows up only in commits.
+- **`history`** returns the creation commit, recent subjects, and the flagged commits where invariants hide, each with the files it touched, its issue/PR refs and a body excerpt. A commit is flagged for a risk word in its subject (revert, deadlock, race…), for closing an issue anywhere in its message (`Fixes #842` — bug fixes whose subject sounds harmless), or for a `Fixes: <sha>` trailer naming the commit that introduced the bug. A commit that changed only test files is marked `[TEST-ONLY]` to help the agent distinguish test maintenance from production behavior. Diffs are omitted by default; `--patch` opts in, and commit text still needs review for secrets.
+- **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. This can surface candidates for shared contracts or deployment dependencies that need investigation. Co-change is a signal, not proof of a dependency.
 - **`validate`** enforces OKF §9: four error classes, twelve warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
-- **`verify`** is a check on *truth*, and it is the one that matters. Every commit the bundle cites must exist and must touch that concept's own `source_files`; a commit that changed only test files cannot back a production invariant; every symbol in an `# Interfaces` table must appear in non-test code; a `# Gotchas` section that cites nothing is an unsupported claim; and every `source_files` path must be tracked by git, so a vendored dependency or an imported project sitting in your working tree cannot be written up as if it were yours. Run it in CI and an agent can no longer quietly write a confident sentence with nothing behind it. On a meta repo it also checks that derived pages cite real summaries and link only units those summaries list (V15), and that the recorded commits agree and no child bundle was copied in (V16).
+- **`verify`** checks commit references, source tracking, interface names and dependency evidence as described [above](#4-deterministic-verification). Findings fail the command; notes require judgement and fail only with `--strict`. It does not assess whether the prose correctly interprets the evidence. On a meta repo it also checks that derived pages cite real summaries and link only units those summaries list (V15), and that the recorded commits agree and no child bundle was copied in (V16).
 - **`meta`** scaffolds a meta repo (`init`), summarises each child bundle in place into `bundles/<name>/summary.md` (`sync`), and rebuilds the domain and contract pages from those summaries (`derive`). Pure Python; no bash needed.
 
 Each is also installed under a bare `okf-` name (`okf-inventory`,

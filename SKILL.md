@@ -1,18 +1,6 @@
 ---
 name: catalogify
-description: >-
-  Generate and maintain an Open Knowledge Format (OKF v0.1) knowledge bundle
-  for a source-code repository — a directory of cross-linked markdown concepts
-  with YAML frontmatter describing its services, modules, APIs, data models,
-  and operations. Use when asked to document a codebase as a knowledge base,
-  build or refresh an OKF bundle or knowledge catalog, mine git history for
-  the "why" behind code, keep repo documentation in sync with code changes,
-  or validate OKF conformance. Also builds a meta repo: one routing index over
-  several repos' bundles, listing their units and the edges within and
-  across repos. Triggers on "catalogify", "OKF", "knowledge bundle",
-  "knowledge catalog", "document this repo", "service catalog", "codebase
-  knowledge base", "meta repo", "meta bundle", "cross-repo", "index these
-  repos".
+description: Generate and maintain an Open Knowledge Format (OKF v0.1) knowledge bundle for a source-code repository — a directory of cross-linked markdown concepts with YAML frontmatter describing its services, modules, APIs, data models, and operations. Use when asked to document a codebase as a knowledge base, build or refresh an OKF bundle or knowledge catalog, mine git history for the "why" behind code, keep repo documentation in sync with code changes, or validate OKF conformance. Triggers on "catalogify", "OKF", "knowledge bundle", "knowledge catalog", "document this repo", "service catalog", "codebase knowledge base". Also builds a meta repo, one routing index over several repos' bundles, listing their units and the edges within and across repos. Triggers on "meta repo", "meta bundle", "cross-repo", "index these repos".
 license: MIT
 metadata:
   version: "0.10.1"
@@ -54,8 +42,21 @@ destroy human curation.
 
 ## Commands
 
-Six commands come with this skill and are already on `PATH` — no paths to
-resolve, run them from anywhere inside the repo. Each accepts `--help`.
+Six commands come with this skill. Run them from anywhere inside the repo;
+each accepts `--help`.
+
+Before the first command, run `catalogify --version` and compare it with the
+`metadata.version` at the top of this file. If they match, use `catalogify`
+as written below. If the command fails (the skill came from a Cursor plugin or
+a copied folder) or prints a different version (an older or newer CLI than
+this skill was written for), run every command through uv instead, pinned to
+this file's version: `uvx catalogify@0.10.1 inventory`,
+`uvx catalogify@0.10.1 verify knowledge` and so on. Tell the user once
+which you used, and on a mismatch that `uv tool upgrade catalogify &&
+catalogify install` brings both back in step. If `uv` is missing too, stop and
+ask the user to install uv (<https://docs.astral.sh/uv/>) or the matching
+catalogify (`uv tool install catalogify==<version>`); do not reimplement the
+commands or carry on with a mismatched CLI.
 
 | Command | Purpose |
 | --- | --- |
@@ -107,8 +108,7 @@ in the current prompt overrides config for that run without changing the
 config. Otherwise use the configured value. Updates preserve the existing
 bundle structure and human curation by default.
 
-Pass the config through whenever you found one — both `catalogify inventory --config
-<path>` and `catalogify validate --config <path>` honor its `exclude` list; without
+Pass the config through whenever you found one — both `catalogify inventory --config <path>` and `catalogify validate --config <path>` honor its `exclude` list; without
 it they fall back to built-in defaults.
 
 Two variables the reference files assume: **`CONFIG`** (the config path, or

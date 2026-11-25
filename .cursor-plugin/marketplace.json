@@ -1,0 +1,16 @@
+{
+  "name": "catalogify",
+  "owner": {
+    "name": "Alex Punnen"
+  },
+  "metadata": {
+    "description": "catalogify: Open Knowledge Format knowledge catalogs for brownfield codebases, mined from code and git history."
+  },
+  "plugins": [
+    {
+      "name": "catalogify",
+      "source": "plugins/catalogify",
+      "description": "Turn a repository into a knowledge catalog an AI agent can afford to read."
+    }
+  ]
+}
