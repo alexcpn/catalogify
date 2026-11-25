@@ -1,29 +1,60 @@
-# Catalogify - Context is Everything
+# catalogify
 
-**A codebase knowledge base the agent can actually afford to read — grounded in git, held to a commit.**
+**Write down what your developers know about the codebase, so your coding agents can use it too.**
 
+[![PyPI](https://img.shields.io/pypi/v/catalogify)](https://pypi.org/project/catalogify/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![SkillSpector 2.12.0: SAFE 0/100, 22/22 checks passed, 2026-11-05](https://img.shields.io/static/v1?label=SkillSpector%202.12.0&message=SAFE%200%2F100%20%C2%B7%2022%2F22%20checks%20passed%20%C2%B7%202026-11-05&color=brightgreen)](https://github.com/NVIDIA/SkillSpector)
 [![Snyk Agent Scan 0.6.10: no risks, 2026-11-05](https://img.shields.io/static/v1?label=Snyk%20Agent%20Scan%200.6.10&message=no%20risks%20%C2%B7%202026-11-05&color=brightgreen)](https://labs.snyk.io/experiments/skill-scan/)
 
-`catalogify` turns a repository into an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
-(OKF v0.1) bundle: linked Markdown concepts covering architecture, services,
-modules, APIs, data models and operations. Your existing coding agent reads the
-evidence and writes the catalog; the CLI only collects facts and checks claims.
+![catalogify verify catching unsupported claims](docs/verify-demo.gif)
+
+<sub>Verify on the published Online Boutique catalog, then again after two typical agent mistakes
+were added by hand: a gotcha citing a commit that never touched the service, and a gotcha
+citing nothing.</sub>
+
+Coding agents are good at reading code. Claude Code, Codex and Cursor search a repository
+with ripgrep and open the files they need, and for most tasks that is all the parsing they
+need.
+
+What they can't get from the source is what the developers know: which service owns a
+behaviour, how the parts fit together, and which change broke production last year and why
+the fix looks odd. On a large brownfield codebase that knowledge lives in people's heads and
+in old commit messages. It is usually what slows an AI rollout down.
+
+catalogify writes that context down, in the repo, as short Markdown pages: one per service or
+module. Your agent reads them before it starts searching.
+
+- Each claim cites the source files or commits it came from, and `catalogify verify` checks
+  those citations against git, with no LLM involved.
+- The catalog records the commit it was built at, so you can see when it's stale and refresh
+  only what changed.
+- What the code and history can't settle becomes an open question. catalogify's clarify
+  workflow ("Use catalogify to clarify the open questions in knowledge/") puts it to a
+  developer, and later updates keep the answer.
+
+From recorded runs:
+
+- **Apache Airflow**, about 1.8 million lines: 17 pages, roughly 9,700 tokens in all.
+  [Browse the catalog](https://github.com/agentic-ai-demos/airflow/tree/main/knowledge).
+- **Online Boutique**: the first catalog passed `validate` with no errors, and `verify` still
+  found 17 unsupported claims. Nine of them were gotchas with no commit behind them. With the
+  verify-and-fix workflow, the next run had none.
+  [Browse the catalog](https://github.com/agentic-ai-demos/microservices-demo/tree/main/knowledge).
+
+All runs, costs and mistakes are in [EXPERIMENTS.md](EXPERIMENTS.md).
+
+If your system spans several repositories, a meta repo gives agents one index over all of
+them: each repo's services and modules, and the contracts between repos. See
+[A meta repo over several repos](#a-meta-repo-over-several-repos).
+
+The catalog is an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
+(OKF v0.1) bundle. Your agent does the writing; the CLI only collects facts and checks claims.
 
 - [QuickStart:Install Skill and Use](#quickstart-agent-skill)
 - [The Four ideas](#the-four-ideas)
 - [Recorded examples](#worked-examples)
-
-## Why this exists
-
-Agents stall on unfamiliar code. They need a map before they can navigate: who
-owns the behavior, how the pieces fit, what already broke once. Full-repo
-context dumps don't solve this — they drown the model. Hand-written wikis do,
-just on a delay: they rot the moment someone merges.
-
-`catalogify` takes the middle path. Capture the system-level structure once,
-keep it cheap to refresh, and make every claim checkable.
+- [A meta repo over several repos](#a-meta-repo-over-several-repos)
 
 ## The four ideas
 
@@ -31,13 +62,12 @@ keep it cheap to refresh, and make every claim checkable.
 
 The catalog describes high level architecture, service boundaries, key interfaces,
 data and dependencies — enough for the agent to decide where to look, not
-enough to replace the source. Deep source scan is left to harness's efficient
-tools like [ripgrep](https://github.com/burntsushi/ripgrep), git grep, and AST parsers
-like [Graphify](https://github.com/Graphify-Labs/graphify)
+enough to replace the source. Searching the source stays with the agent's own
+tools, such as [ripgrep](https://github.com/burntsushi/ripgrep) and git grep.
 
 This matters on large repos and monorepos with hundreds of microservices. Bounded inventories
 and history keeps the context size manageable. Full source scans, AST parse trees and the like
-exhausts even the largest context sizes.
+exhaust even the largest context sizes.
 
 In a recorded Apache Airflow run, **1.8 million lines of code** produced 17
 concepts totalling about **9,700 tokens**. That was a coarse overview, not
