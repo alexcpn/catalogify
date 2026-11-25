@@ -27,7 +27,8 @@ def meta(tmp_path):
 
 
 def findings(out, code):
-    return [l.split("FINDING ", 1)[1] for l in out.splitlines() if "FINDING " in l]
+    # verify reports paths with the OS separator; compare them in posix form.
+    return [l.split("FINDING ", 1)[1].replace("\\", "/") for l in out.splitlines() if "FINDING " in l]
 
 
 def test_clean_meta_verifies(meta):

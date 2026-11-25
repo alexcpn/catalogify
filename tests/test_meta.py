@@ -160,7 +160,7 @@ def test_init_records_head(tmp_path):
 
 def test_sync_writes_only_summaries(tmp_path):
     root, dc, edge = synced(tmp_path)
-    files = sorted(str(p.relative_to(root)) for p in (root / "bundles").rglob("*") if p.is_file())
+    files = sorted(p.relative_to(root).as_posix() for p in (root / "bundles").rglob("*") if p.is_file())
     assert files == ["bundles/dc/summary.md", "bundles/edge/summary.md"]
     text = (root / "bundles/dc/summary.md").read_text()
     assert "must never reach the meta repo" not in text
