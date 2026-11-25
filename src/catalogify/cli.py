@@ -31,6 +31,11 @@ Commands:
   cochange [<path>...] [--depth N]         Directories that change together in
            [--since D] [--json]            history: coupling that no import
                                            graph or call graph can see.
+  meta init [<dir>]                        One routing index over many repos:
+  meta sync [--root D] [name=dir ...]      scaffold a meta repo, summarise each
+  meta derive [--root D]                   child bundle (read in place, never
+                                           copied), derive component pages,
+                                           edges within and across repos.
   validate <bundle_dir> [--config <cfg>]   Check a bundle against OKF v0.1 §9
                                            (structure: is it well-formed?).
   verify <bundle_dir> [--json] [--strict]  Check the bundle's CLAIMS against the
@@ -72,6 +77,7 @@ def main(argv: list = None) -> int:
         "history": runner.history,
         "validate": runner.validate,
         "verify": runner.verify,
+        "meta": runner.meta,
         "cochange": runner.cochange,
     }
     if command in dispatch:

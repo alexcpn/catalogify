@@ -286,6 +286,12 @@ def build(out):
     template = (ASSETS / "okf-config.template.yml").read_text()
     (out / "okf-config.template.yml").write_text(
         apply_rules(template, "okf-config.template.yml", TEMPLATE_RULES, [], []))
+
+    # The meta workflow spans several repos and a Spec Kit project is one, so
+    # it stays out of the extension.
+    leaked = sorted(p.name for p in (out / "commands").glob("meta*.md"))
+    if leaked:
+        raise SystemExit(f"build: the meta workflow must not become a Spec Kit command: {leaked}")
     return ver
 
 

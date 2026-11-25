@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from contextlib import ExitStack
 from importlib.resources import as_file, files
 from pathlib import Path
@@ -71,11 +72,24 @@ def _find_bash() -> str:
     )
 
 
+# Scripts that import sibling scripts. From a zip or another loader that is
+# not a plain filesystem, `as_file` would extract the one script alone and its
+# imports would fail, so these are copied into one temporary directory.
+_SIBLINGS = {"okf_meta.py": ("okf_meta.py", "okf_meta_templates.py", "verify_okf.py")}
+
+
 def _run_script(name: str, argv: list, interpreter: list) -> int:
     """Materialize a bundled script to a real path and exec it with argv."""
     with ExitStack() as stack:
-        resource = files("catalogify._scripts").joinpath(name)
-        path = stack.enter_context(as_file(resource))
+        package = files("catalogify._scripts")
+        resource = package.joinpath(name)
+        if name in _SIBLINGS and not isinstance(resource, Path):
+            tmp = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+            for part in _SIBLINGS[name]:
+                (tmp / part).write_bytes(package.joinpath(part).read_bytes())
+            path = tmp / name
+        else:
+            path = stack.enter_context(as_file(resource))
         try:
             completed = subprocess.run([*interpreter, str(path), *argv], check=False)
         except OSError as exc:
@@ -101,6 +115,11 @@ def cochange(argv: list = None) -> int:
 def verify(argv: list = None) -> int:
     """`okf-verify` — check a bundle's claims against the repository."""
     return _run_script("verify_okf.py", list(sys.argv[1:] if argv is None else argv), [sys.executable])
+
+
+def meta(argv: list = None) -> int:
+    """`catalogify meta` — one routing index over many repos' bundles."""
+    return _run_script("okf_meta.py", list(sys.argv[1:] if argv is None else argv), [sys.executable])
 
 
 def validate(argv: list = None) -> int:
