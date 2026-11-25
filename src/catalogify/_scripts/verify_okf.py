@@ -34,6 +34,17 @@ Notes (probably wrong, legitimately arguable):
   V7  The body claims an "import cycle" between Go packages. Go forbids
       them; what is almost always meant is a shared leaf sub-package.
 
+Meta repos (`catalogify meta`; on when the bundle root holds both repos.yaml
+and okf-registry.yaml). The walk skips bundles/, workspace/ and scripts/,
+and two findings are added:
+  V15 A derived page (`generated_by: catalogify-meta/...`) cites a
+      `source_files` entry that is not an existing bundles/<name>/summary.md
+      of a registered repo, or links a child page that the repo's summary
+      does not list, or at a ref other than the summary's.
+  V16 A repo in okf-registry.yaml has ref `unknown`, a ref that disagrees
+      with its summary's, no summary, or files other than summary.md under
+      bundles/<name>/ (a copied bundle).
+
 Usage: verify_okf.py <bundle_dir> [--repo-root PATH] [--json] [--strict]
 Exit 0 when no findings (notes allowed), 1 when findings exist, 2 on bad
 usage. --strict also fails on notes.
@@ -462,6 +473,85 @@ def verify_concept(rel, text, bundle, repo_root, repo, concept_sources):
         )
 
 
+META_SKIP = {"bundles", "workspace", "scripts"}
+
+
+def is_meta_root(bundle):
+    return (os.path.isfile(os.path.join(bundle, "repos.yaml"))
+            and os.path.isfile(os.path.join(bundle, "okf-registry.yaml")))
+
+
+def verify_meta(bundle, concepts):
+    """V15 and V16. Returns the number of repo summaries found."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import okf_meta  # sibling; imported only for meta roots
+
+    try:
+        reg = okf_meta.load_registry(bundle)
+    except okf_meta.Usage as exc:
+        findings.append(f"V16 repos.yaml: cannot be read ({exc})")
+        return 0
+    repos = reg["repos"]
+    summaries = {}
+    for name in sorted(repos):
+        s = okf_meta.read_summary(os.path.join(bundle, "bundles", name, "summary.md"))
+        if s is not None:
+            summaries[name] = s
+
+    # V16: the mount record agrees with the summaries, and nothing was copied.
+    for key, m in sorted(okf_meta.read_mounts(bundle).items()):
+        name = key.split("/", 1)[1] if key.startswith("bundles/") else key
+        ref = str(m.get("ref") or "unknown")
+        s = summaries.get(name)
+        if s is None:
+            findings.append(f"V16 {key}: summary.md is missing; run catalogify meta sync {name}=<dir>")
+            continue
+        theirs = str(s["fm"].get("ref") or "unknown")
+        if ref == "unknown" or theirs == "unknown":
+            findings.append(f"V16 {key}: recorded ref `unknown`; the child log.md had no Commit: line. "
+                            f"Resync after the child bundle records one")
+        elif not (ref.startswith(theirs) or theirs.startswith(ref)):
+            findings.append(f"V16 {key}: okf-registry.yaml says `{ref}` but {key}/summary.md says "
+                            f"`{theirs}`; run catalogify meta sync {name}=<dir>")
+        extra = sorted(f for f in os.listdir(os.path.join(bundle, key)) if f != "summary.md")
+        if extra:
+            findings.append(f"V16 {key}: holds files other than summary.md ({', '.join(extra[:3])}"
+                            f"{', ...' if len(extra) > 3 else ''}); a meta repo keeps summaries, "
+                            f"never copied bundles")
+
+    # V15: derived pages cite real summaries and link only listed units.
+    patterns = []
+    for name, s in summaries.items():
+        tmpl = re.escape(okf_meta.link_template(repos[name]))
+        tmpl = tmpl.replace(re.escape("{ref}"), r"(?P<ref>[^/]+)").replace(re.escape("{path}"), r"(?P<path>[^)#?\s]+)")
+        patterns.append((name, re.compile("^" + tmpl + "$"),
+                         {u["path"] for u in s["units"]}, okf_meta.link_ref(s["fm"].get("ref"))))
+    for rel in sorted(concepts):
+        fm, body = split_frontmatter(concepts[rel])
+        data = parse_yaml(fm) if fm else None
+        if not isinstance(data, dict) or not str(data.get("generated_by", "")).startswith("catalogify-meta/"):
+            continue
+        srcs = data.get("source_files") or []
+        for entry in ([srcs] if isinstance(srcs, str) else srcs):
+            m = re.fullmatch(r"bundles/([a-z0-9][a-z0-9-]*)/summary\.md", str(entry))
+            if not m or m.group(1) not in summaries:
+                findings.append(f"V15 {rel}: source_files entry `{entry}` is not a repo summary")
+        for target in LINK.findall(body):
+            target = target.strip()
+            for name, rx, paths, ref in patterns:
+                m = rx.match(target)
+                if not m:
+                    continue
+                if m.group("path") not in paths:
+                    findings.append(f"V15 {rel}: links `{m.group('path')}` in {name}, which "
+                                    f"bundles/{name}/summary.md does not list")
+                elif m.group("ref") != ref:
+                    findings.append(f"V15 {rel}: links {name} at `{m.group('ref')}`, but the summary "
+                                    f"is at `{ref}`")
+                break
+    return len(summaries)
+
+
 def find_repo_root(bundle):
     p = bundle
     while True:
@@ -493,11 +583,14 @@ def main():
 
     repo = Repo(repo_root)
 
+    meta = is_meta_root(bundle)
+
     # Pass 1: every concept's source_files, so dependency links can resolve.
     concepts = {}
     concept_sources = {}
     for dirpath, dirnames, filenames in os.walk(bundle):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")
+                       and not (meta and dirpath == bundle and d in META_SKIP)]
         for f in filenames:
             if not f.endswith(".md") or f in RESERVED or f.lower() in IGNORED_LOWER:
                 continue
@@ -517,16 +610,21 @@ def main():
     # Pass 2: verify.
     for rel in sorted(concepts):
         verify_concept(rel, concepts[rel], bundle, repo_root, repo, concept_sources)
+    n_summaries = verify_meta(bundle, concepts) if meta else None
 
     if args.json:
-        print(json.dumps({
+        out = {
             "concepts": len(concepts),
             "findings": findings,
             "notes": notes,
             "result": "UNSUPPORTED CLAIMS" if findings else "VERIFIED",
-        }, indent=2))
+        }
+        if meta:
+            out["meta"] = {"summaries": n_summaries}
+        print(json.dumps(out, indent=2))
     else:
-        print(f"OKF claim verification of {bundle}")
+        suffix = f" (meta bundle: {n_summaries} repo summar{'y' if n_summaries == 1 else 'ies'})" if meta else ""
+        print(f"OKF claim verification of {bundle}{suffix}")
         print(f"  concepts: {len(concepts)}  findings: {len(findings)}  notes: {len(notes)}\n")
         for f in findings:
             print(f"  FINDING {f}")

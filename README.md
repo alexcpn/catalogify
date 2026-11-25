@@ -240,10 +240,11 @@ See the [extension guide](integrations/speckit/README.md) for more installation
 details
 
 
-## The four workflows
+## The workflows
 
 These workflows run through the agent skill or the Spec Kit extension. Ask your
-agent in plain language with the skill, or use the extension commands above:
+agent in plain language with the skill, or use the extension commands above.
+The meta workflow spans several repos, so it is skill-only:
 
 | Workflow | What it does |
 | -------- | ------------ |
@@ -251,6 +252,48 @@ agent in plain language with the skill, or use the extension commands above:
 | **update** | Diffs since the last logged commit; refreshes only stale concepts, deprecates orphans, adds new ones, preserves human curation. |
 | **clarify** | Asks you about the `open_questions` the other workflows parked, then folds the answers in as cited, curation-protected knowledge. |
 | **validate** | OKF §9 conformance check plus a quality spot-check. |
+| **meta** | One routing index over several repos' bundles: their units, and the edges inside and between them. See below. |
+
+## A meta repo over several repos
+
+One bundle documents one repo. A system spread over many repos needs a map
+above them: which repo owns what, and which contracts cross repo lines. No
+single bundle can show that, and a planning agent can't read every bundle to
+find out.
+
+A meta repo is a separate git repo that holds that map. For each child repo
+it keeps a summary of the child's bundle, never the bundle itself: the units
+(services, modules, components), the edges between them that the child bundle
+declares, and the identifiers each unit provides and uses. From those
+summaries it derives one page per domain per repo and one page per
+cross-repo contract. An agent searches it to find the few repos a feature
+touches, then works in each repo with that repo's own bundle.
+
+```bash
+catalogify meta init my-meta && cd my-meta && git init
+# edit repos.yaml: the repos, how each splits into domains, the contracts
+catalogify meta sync dc=../dc/knowledge edge=../edge/docs/kb
+catalogify meta derive
+catalogify validate . --config .okf-config.yml
+git add -A && git commit -m "meta: first derive" && catalogify verify .
+```
+
+Links on the derived pages go to each child page on its forge, at the commit
+that was summarised. A cross-repo edge is a name match: the consumer's page
+names an identifier the provider lists. That is evidence of a caller, not
+proof, and every contract page says so. Contracts that aren't shared names,
+such as queues, shared schemas and deployment repos, are written by hand
+with the agent's help. Rebuilds keep each page's `# Notes` and
+`open_questions`, and never touch a page without the `generated_by` marker.
+
+`sync` reads local paths only. In CI, clone each child's bundle directory
+with a sparse, shallow clone, then sync and derive:
+
+```bash
+git clone --depth 1 --filter=blob:none --sparse "$REMOTE" "workspace/$NAME"
+git -C "workspace/$NAME" sparse-checkout set "$BUNDLE_PATH"
+catalogify meta sync "$NAME=workspace/$NAME/$BUNDLE_PATH" && catalogify meta derive
+```
 
 ## What you get
 
@@ -508,6 +551,7 @@ catalogify history pkg/foo --limit 5        # the reverts and hotfixes behind a 
 catalogify cochange pkg/foo --depth 3       # what changes when this changes
 catalogify validate knowledge/              # OKF v0.1 §9 conformance (structure)
 catalogify verify knowledge/                # do its claims survive the repo?
+catalogify meta init | sync | derive        # a meta repo over several repos
 catalogify install [--list] [--uninstall]   # manage the agent skill
 ```
 
@@ -515,7 +559,8 @@ catalogify install [--list] [--uninstall]   # manage the agent skill
 - **`history`** returns the creation commit, recent subjects, and the flagged commits where invariants hide, each with the files it touched, its issue/PR refs and a body excerpt. A commit is flagged for a risk word in its subject (revert, deadlock, race…), for closing an issue anywhere in its message (`Fixes #842` — bug fixes whose subject sounds harmless), or for a `Fixes: <sha>` trailer naming the commit that introduced the bug. A commit that changed only test files is marked `[TEST-ONLY]` to help the agent distinguish test maintenance from production behavior. Diffs are omitted by default; `--patch` opts in, and commit text still needs review for secrets.
 - **`cochange`** mines logical coupling from history: units that keep changing in the same commit, scored by support, confidence and lift. This can surface candidates for shared contracts or deployment dependencies that need investigation. Co-change is a signal, not proof of a dependency.
 - **`validate`** enforces OKF §9: four error classes, twelve warning classes. W9 catches links that validate against the spec and 404 on GitHub — a leading `/` means *bundle* root to OKF and *repository* root to every renderer, so bundle-relative links break whenever the bundle sits in a subdirectory. This is a check on *structure*.
-- **`verify`** checks commit references, source tracking, interface names and dependency evidence as described [above](#4-deterministic-verification). Findings fail the command; notes require judgement and fail only with `--strict`. It does not assess whether the prose correctly interprets the evidence.
+- **`verify`** checks commit references, source tracking, interface names and dependency evidence as described [above](#4-deterministic-verification). Findings fail the command; notes require judgement and fail only with `--strict`. It does not assess whether the prose correctly interprets the evidence. On a meta repo it also checks that derived pages cite real summaries and link only units those summaries list (V15), and that the recorded commits agree and no child bundle was copied in (V16).
+- **`meta`** scaffolds a meta repo (`init`), summarises each child bundle in place into `bundles/<name>/summary.md` (`sync`), and rebuilds the domain and contract pages from those summaries (`derive`). Pure Python; no bash needed.
 
 Each is also installed under a bare `okf-` name (`okf-inventory`,
 `okf-history`, `okf-cochange`, `okf-validate`, `okf-verify`); the first two and
