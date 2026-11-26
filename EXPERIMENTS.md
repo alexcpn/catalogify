@@ -21,7 +21,7 @@ Findings are `catalogify verify` results on the finished bundle. Run 0 predates
 `verify` and was judged retrospectively. Runs 1 and 2 are the same repository
 and commit, regenerated under a later version.
 
-Detail sections: run 1 in §1–§8, run 2 in §9, run 3 in §11, run 0 in §12, run 4 in §13, run 5 in §13a, run 6 in §13b, run 7 in §13c.
+Detail sections: run 1 in §1–§8, run 2 in §9, run 3 in §11, run 0 in §12, run 4 in §13, run 5 in §13a, run 6 in §13b, run 7 in §13c, run 9 in §13e. Run 9 builds no catalog: it compares agents given a catalog, a graphify graph, or nothing.
 
 ---
 
@@ -648,6 +648,85 @@ Caveats:
 - One task, one repository, one model. The gap is the knowledge an
   undocumented repository hides, which is where a bundle should help; it says
   nothing about repositories that already document their procedures (§13b).
+
+## 13e. Run 9 — catalog, code graph, or grep alone
+
+**Date:** 25–26 November 2026
+
+The question: does an agent need a code graph, or is grep enough? Three arms
+on the same two planning tasks, same model, 13 attempts each:
+
+| Arm | What the agent gets |
+|---|---|
+| grep only | the checkout as it is |
+| catalogify | a plain catalog from the published skill (0.10.1), committed as `knowledge/`, with the "start here" pointer in `AGENTS.md` |
+| graphify | [graphify](https://github.com/Graphify-Labs/graphify) 0.9.120's graph of the whole repository, committed as `graphify-out/`, set up by graphify's own installers (`graphify install`, `graphify claude install`: a skill, an `AGENTS.md` section and PreToolUse hooks that send the agent to the graph before Grep, Glob, Read and search commands) |
+
+The graph was built with `graphify extract . --code-only` (local tree-sitter,
+no LLM), then `graphify cluster-only` and `graphify label`, which named its
+communities with the trial model so the report reads as it would in normal use.
+On mitmproxy it has 12,914 nodes and 36,560 edges (33 MB); on Airflow, 152,414
+nodes and 366,333 edges (546 MB, about 12 minutes to build). The catalogs are
+the existing fixtures: `mitmproxy-options-knowledge-plain` (8 concepts, built
+2026-11-05, `_options_gen.ts` named in 2 of them; a later build than the
+11-concept control in §13c) and `airflow-execution-api-knowledge` (17
+concepts, §13a). Claude Code, Haiku 5.5, through the reuse-eval harness on the
+`eval-graphify` branch. Each attempt's transcript was kept and its tool calls
+counted: code searches (the Grep tool, or `grep`/`rg` in a shell command),
+graphify calls, and catalog reads. 78 trials, $1.33 in all.
+
+### mitmproxy: add `tcp_timeout` (the task of §13c)
+
+| Arm | Complete plans | Input tokens (mean) | Searches (mean) | graphify calls (mean) | Catalog reads (mean) |
+|---|---:|---:|---:|---:|---:|
+| grep only | 11/13 | 256,825 | 14.1 | 0 | 0 |
+| catalogify | **13/13** | 260,952 | 9.5 | 0 | 3.5 |
+| graphify | **13/13** | 310,360 | 10.2 | 1.3 | 0 |
+
+Both grep-only misses left out the generated `_options_gen.ts`, as in §13c.
+The completeness gap is not significant (2 of 13). graphify used 19% more
+input tokens than grep only (permutation test p = 0.045) and than the catalog
+(p = 0.033); the catalog's tokens match grep only (p = 0.82).
+
+### Airflow: plan apache/airflow#69403 (the task of §13a)
+
+| Arm | Score (mean, range) | Complete plans | Input tokens (mean) | Searches (mean) | graphify calls (mean) | Catalog reads (mean) |
+|---|---|---:|---:|---:|---:|---:|
+| grep only | 0.75 (0.64–0.91) | 0/13 | 855,375 | 32.2 | 0 | 0 |
+| catalogify | 0.79 (0.64–0.91) | 0/13 | 639,709 | 21.3 | 0 | 2.2 |
+| graphify | 0.80 (0.64–0.91) | 0/13 | 711,912 | 23.7 | 1.0 | 0 |
+
+No arm wrote a complete plan, and the scores are within noise. Every arm most
+often missed the same parts: the generated TypeScript SDK (catalogify 13/13 attempts, grep only 13/13,
+graphify 9/13), the Execution API datamodel (7, 10, 10) and the supervisor
+schema version (4, 7, 5). The catalog used 25% fewer input tokens than grep
+only and a third fewer searches (p = 0.09 for tokens: suggestive, not shown);
+graphify 17% fewer (p = 0.31). In §13a the same catalog used the same tokens
+as no catalog, so the token difference has not held across runs.
+
+### What this says
+
+- **Agents work by searching, whatever they are given.** Every arm ran 10–32
+  searches per attempt. With graphify installed and its hooks steering them,
+  agents made about one graph query per attempt and then searched like the
+  others.
+- **The graph did not save tokens.** On mitmproxy it cost 19% more; on Airflow
+  the saving was within noise. graphify's own `benchmark` command measures
+  token reduction against reading the whole corpus, which is not what an agent
+  does.
+- **All three missed the same parts most often:** the generated TypeScript
+  SDK and the supervisor schema version on Airflow, the generated
+  `_options_gen.ts` on mitmproxy (grep only). These are tied to the change by
+  convention and history more than by a name the change mentions.
+
+Caveats:
+- One model (Haiku 5.5), two tasks, 13 attempts per arm. Planning tasks only,
+  not implementation.
+- graphify covered the whole repository, as its README recommends; the
+  catalogs cover only the area of the change.
+- Search counts come from the transcripts by pattern (Grep/Glob tools, and
+  shell commands containing `grep`, `rg`, `git grep`, `ag` or `ack`).
+- The checklists are the ones from §13a and §13c, unchanged.
 
 ## 14. Open follow-ups
 
