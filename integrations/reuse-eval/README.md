@@ -126,3 +126,34 @@ typed bundle with `find` scored 1.00 (3/3) against 0.93 without (one plan left o
 `_options_gen.ts`), at the same input tokens (244k against 240k). It's the first result in the
 bundle's favour, and too small to count: three attempts per arm, and a gap of one plan. Details in
 `EXPERIMENTS.md` §13c.
+
+## Mining routing tasks
+
+`mine_tasks.py` builds a task list for a different question: from a request, which services have
+to change? It walks a monorepo's log and keeps the commits that changed source code in two to
+five services. The services are the answer key and the commit's parent is the checkout.
+
+```bash
+python3 integrations/reuse-eval/mine_tasks.py <spinnaker clone> --preset spinnaker \
+    --after <bundle commit> -o tasks.json
+```
+
+Bots, dependency bumps, reverted commits and touches that are only tests, config or build files
+don't count. A later commit that says it follows up or fixes an earlier one is folded into that
+one's answer. `named_in_message` lists the answer services the commit message already names, so
+a request written from that message needs them taken out.
+
+## Fifth result: routing on Spinnaker, 2026-11-11
+
+`routing.py` runs the mined tasks: 14 Spinnaker changes from October and November 2026, a bundle
+built before the oldest of them, Sonnet 5.5, one attempt per task and arm. Recall was 0.88 with
+and without the bundle, and every arm missed the same services. Reading the bundle used 17% fewer
+input tokens; `catalogify find` used 30% more. A follow-up arm with `find --history` reached 0.92:
+one more task right, at one attempt per task. In the misses the agent had opened the missed
+service and judged that it need not change. Details in `EXPERIMENTS.md` §13d.
+
+```bash
+python3 integrations/reuse-eval/routing.py bundle
+python3 integrations/reuse-eval/routing.py trials -n 1 --parallel 1 --min-balance 0.6
+python3 integrations/reuse-eval/routing.py summary --arms none bundle
+```

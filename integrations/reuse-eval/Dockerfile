@@ -16,3 +16,7 @@ ENV PATH="/root/.local/bin:${PATH}" \
 # never learn it is there.
 COPY wheel/ /tmp/catalogify-wheel/
 RUN pip install --no-cache-dir /tmp/catalogify-wheel/*.whl && catalogify --version
+# graphify, for the graphify arm. Like catalogify, it is installed in every arm;
+# only the graphify arm is set up to use it.
+ARG GRAPHIFY_VERSION=0.9.120
+RUN pip install --no-cache-dir "graphifyy[anthropic]==${GRAPHIFY_VERSION}" && graphify --help > /dev/null

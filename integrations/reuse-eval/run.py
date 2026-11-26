@@ -8,6 +8,10 @@ with the same prompt, in two arms:
 
   bundle  the scenario's fixture bundle is committed as knowledge/, and a short
           section in AGENTS.md points at it
+  graphify  graphify's code graph (`graphify extract . --code-only`, built once per
+          scenario) committed as graphify-out/, with graphify's own Claude Code setup
+          (`graphify install` and `graphify claude install`: a CLAUDE.md section and a
+          PreToolUse hook)
   none    the checkout as it is
 
 Neither arm has the catalogify skill installed, so the bundle is the only
@@ -15,6 +19,7 @@ difference. Each scenario pins its own Airflow commit (the parent of a real
 upstream change), its bundle scope and its tasks.
 
   run.py bundle  -s SCENARIO           build the scenario's fixture bundle once (catalogify skill)
+  run.py graph   -s SCENARIO           build the scenario's graphify graph once (no LLM)
   run.py trials  -s SCENARIO [-n 3]    run its tasks in both arms, n attempts each
   run.py retry   -s SCENARIO --run X   re-run attempts that ended in an API error
   run.py summary -s SCENARIO [--run X] aggregate results/SCENARIO/X into SUMMARY.md
@@ -233,6 +238,23 @@ SCENARIOS = {
     # Same feature and tasks; the bundle is rebuilt by catalogify 0.11.0 with
     # typed relations, playbooks and guardrails, and the agent reaches it
     # through `catalogify find` instead of reading it.
+    # Same task, with a bundle built by the published skill (main, 0.10.1): no
+    # typed relations, no find. Read through the plain "start here" pointer.
+    "mitmproxy-tcp-timeout-plain": {
+        "repo": "https://github.com/mitmproxy/mitmproxy.git",
+        "base": "181dfb000bbd28ebcb7f6a603cf5c57af7ddc7ba",
+        "upstream": "9e22acffcb5a4888fde571267e7125b1b69a9e80",
+        "fixture": "mitmproxy-options-knowledge-plain",
+        "skill_ref": "origin/main",
+        "parts": TCP_TIMEOUT_PARTS,
+        "pointer": pointer("mitmproxy's option system and proxy core"),
+        "bundle_prompt": bundle_prompt(
+            "mitmproxy's option system and proxy core, in this checkout: how options are declared, "
+            "managed and exposed on the command line and in the web UI, and the proxy server that "
+            "uses them. Scope it to `mitmproxy/options.py`, `mitmproxy/optmanager.py`, "
+            "`mitmproxy/proxy/`, `mitmproxy/tools/` and `web/gen/`."),
+        "tasks": {"plan": TCP_TIMEOUT_PLAN},
+    },
     "dagrun-note-v2": {
         "base": "8d4ab8a94db291a359b686ac545211f4c440cb3e",
         "upstream": "0b6c38502abb6a152ab6a6334910f171c75c4e5f",
@@ -266,7 +288,8 @@ SCENARIOS = {
 }
 
 
-ARMS = ("bundle", "bundle-trust", "bundle-find", "none")
+ARMS = ("bundle", "bundle-trust", "bundle-find", "graphify", "none")
+GRAPHIFY_VERSION = "0.9.120"
 
 
 # ----------------------------------------------------------------- docker
@@ -326,14 +349,33 @@ fi
 if [ "$ARM" = skill ]; then
   mkdir -p /root/.claude/skills && cp -R /eval/skill /root/.claude/skills/catalogify
 fi
+if [ "$ARM" = graphify ]; then
+  # graphify's own setup for Claude Code, as its README's quickstart does it.
+  cp -R /eval/graph graphify-out
+  graphify install > /out/graphify-install.log 2>&1
+  graphify claude install >> /out/graphify-install.log 2>&1
+  git add -A && git commit -qm "Add graphify graph" >> /out/graphify-install.log 2>&1
+fi
+if [ "$TASK" = graph ]; then
+  graphify extract . --code-only > /out/graphify-extract.log 2>&1
+  # The report graphify's agent instructions point to, with its communities
+  # named by the trials' model, as in normal use.
+  graphify cluster-only . --no-label --no-viz >> /out/graphify-extract.log 2>&1
+  ANTHROPIC_MODEL="$MODEL" graphify label . --backend claude --model "$MODEL" >> /out/graphify-extract.log 2>&1
+  rm -rf /out/graph && cp -R graphify-out /out/graph
+  echo '{"result":"graph built","usage":{}}' > /out/claude.json
+  exit 0
+fi
 start=$(git rev-parse HEAD)
 claude -p "$(cat /eval/prompt.txt)" --model "$MODEL" --output-format json \
   --dangerously-skip-permissions > /out/claude.json 2> /out/claude.stderr
 echo $? > /out/claude.exit
 GIT_NO_LAZY_FETCH=1 git cat-file -e "$UPSTREAM_SHA^{commit}" 2>/dev/null && echo 1 > /out/fetched_upstream || echo 0 > /out/fetched_upstream
 git diff --stat "$start" > /out/diffstat.txt
-git status --porcelain --untracked-files=all > /out/status.txt
-git diff "$start" -- . ':(exclude)knowledge' > /out/diff.patch
+git status --porcelain --untracked-files=all -- . ':(exclude)graphify-out' > /out/status.txt
+git diff "$start" -- . ':(exclude)knowledge' ':(exclude)graphify-out' > /out/diff.patch
+# The session transcript, for counting which tools the agent used.
+rm -rf /out/transcripts && cp -R /root/.claude/projects /out/transcripts 2>/dev/null || true
 if [ "$TASK" = feature ]; then
   python3 /eval/grade_feature.py /opt/afvenv/bin/python > /out/grade.json 2> /out/grade.stderr
 fi
@@ -358,7 +400,16 @@ def run_container(scn: str, task: str, arm: str, prompt: str, out: Path) -> None
         shutil.copy(HERE / "grade_feature.py", ev / "grade_feature.py")
         if arm in ("bundle", "bundle-trust", "bundle-find"):
             shutil.copytree(HERE / "fixtures" / cfg["fixture"], ev / "fixture")
-        if arm == "skill":
+        if arm == "graphify":
+            shutil.copytree(graph_fixture(scn), ev / "graph")
+        if arm == "skill" and cfg.get("skill_ref"):
+            # The skill as published at that ref, not the working tree's.
+            (ev / "skill").mkdir()
+            archive = subprocess.run(["git", "archive", cfg["skill_ref"], "plugins/catalogify/skills/catalogify"],
+                                     cwd=ROOT, check=True, capture_output=True).stdout
+            subprocess.run(["tar", "-x", "--strip-components=4", "-C", str(ev / "skill")],
+                           input=archive, check=True)
+        elif arm == "skill":
             shutil.copytree(SKILL_DIR, ev / "skill")
         cmd = ["docker", "run", "--rm", "-v", f"{ev}:/eval:ro", "-v", f"{out}:/out",
                "-e", "ANTHROPIC_BASE_URL", "-e", "ANTHROPIC_API_KEY",
@@ -394,6 +445,42 @@ def grade_plan(plan: str, parts: dict | None = None) -> dict[str, float]:
             for part, pats in (parts or DAGRUN_NOTE_PARTS).items()}
 
 
+SEARCH = re.compile(r"(^|[\s;|&(])(rg|grep|git grep|ag|ack)\s")
+
+
+def tool_usage(out: Path) -> dict[str, int]:
+    """What the agent did, counted from its transcript: code searches (the Grep tool,
+    or grep/rg in a shell command), graphify CLI calls, reads of the catalog, reads of
+    other files, and other shell commands."""
+    counts = {"search": 0, "graphify": 0, "catalog_read": 0, "file_read": 0, "other_shell": 0}
+    for f in (out / "transcripts").rglob("*.jsonl") if (out / "transcripts").is_dir() else []:
+        for line in f.read_text(errors="replace").splitlines():
+            try:
+                content = (json.loads(line).get("message") or {}).get("content")
+            except (json.JSONDecodeError, AttributeError):
+                continue
+            for part in content if isinstance(content, list) else []:
+                if not isinstance(part, dict) or part.get("type") != "tool_use":
+                    continue
+                name, inp = part.get("name"), part.get("input") or {}
+                if name in ("Grep", "Glob"):
+                    counts["search"] += 1
+                elif name == "Read":
+                    counts["catalog_read" if "knowledge/" in str(inp.get("file_path")) else "file_read"] += 1
+                elif name == "Bash":
+                    cmd = str(inp.get("command", ""))
+                    hit = False
+                    if "graphify " in cmd:
+                        counts["graphify"] += 1; hit = True
+                    if SEARCH.search(cmd):
+                        counts["search"] += 1; hit = True
+                    if "knowledge/" in cmd:
+                        counts["catalog_read"] += 1; hit = True
+                    if not hit:
+                        counts["other_shell"] += 1
+    return counts
+
+
 def collect(out: Path, task: str, parts: dict | None = None) -> dict:
     rec: dict = {"dir": str(out.relative_to(HERE))}
     try:
@@ -416,6 +503,7 @@ def collect(out: Path, task: str, parts: dict | None = None) -> dict:
         "fetched_upstream": (out / "fetched_upstream").read_text().strip() == "1"
         if (out / "fetched_upstream").exists() else None,
         "changed_files": bool((out / "status.txt").exists() and (out / "status.txt").read_text().strip()),
+        "tools": tool_usage(out),
     })
     answer = res.get("result") or ""
     if task == "feature":
@@ -459,6 +547,26 @@ def cmd_bundle(args: argparse.Namespace) -> None:
     print(f"fixture written to {fixture.relative_to(ROOT)}")
 
 
+def graph_fixture(scn: str) -> Path:
+    """graphify's output for the scenario's checkout. Not committed: it can be large."""
+    return HERE / "fixtures" / f"{scn}-graphify"
+
+
+def cmd_graph(args: argparse.Namespace) -> None:
+    build_images(args.scenario)
+    out = RESULTS / args.scenario / "graph-build" / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    print(f"building the graphify graph (code only, no LLM) -> {out}", flush=True)
+    run_container(args.scenario, "graph", "none", "", out)
+    if not (out / "graph" / "graph.json").is_file():
+        sys.exit(f"no graph produced; see {out}/graphify-extract.log")
+    dest = graph_fixture(args.scenario)
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(out / "graph", dest)
+    size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())
+    print(f"graph written to {dest.relative_to(ROOT)} ({size / 1e6:.1f} MB)")
+
+
 def report(task: str, arm: str, i: int, rec: dict) -> None:
     if rec.get("error"):
         print(f"  {task:8} {arm:6} #{i}: ERROR {rec['error'][:100]}", flush=True)
@@ -471,6 +579,8 @@ def cmd_trials(args: argparse.Namespace) -> None:
     cfg = SCENARIOS[args.scenario]
     if not (HERE / "fixtures" / cfg["fixture"] / "index.md").is_file():
         sys.exit(f"no fixture bundle; run `run.py bundle -s {args.scenario}` first")
+    if "graphify" in args.arms and not (graph_fixture(args.scenario) / "graph.json").is_file():
+        sys.exit(f"no graph; run `run.py graph -s {args.scenario}` first")
     tasks = args.tasks or list(cfg["tasks"])
     build_images(args.scenario)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -507,6 +617,11 @@ def cmd_retry(args: argparse.Namespace) -> None:
     cmd_summary(argparse.Namespace(scenario=args.scenario, run=args.run))
 
 
+def tmean(recs: list[dict], key: str) -> float:
+    vals = [r["tools"][key] for r in recs if isinstance(r.get("tools"), dict)]
+    return statistics.mean(vals) if vals else float("nan")
+
+
 def cmd_summary(args: argparse.Namespace) -> None:
     base = RESULTS / args.scenario
     runs = sorted(p for p in base.iterdir() if p.is_dir() and re.match(r"\d{8}-\d{6}$", p.name)) \
@@ -517,8 +632,9 @@ def cmd_summary(args: argparse.Namespace) -> None:
     lines = [f"# Bundle reuse: {args.scenario}, {run.name}", "",
              f"Model `{MODEL}`, Claude Code in Docker.", "",
              "| Task | Arm | Attempts | Score (mean) | Cost $ (mean) | Turns (mean) | "
-             "Seconds (mean) | Input tokens (mean) | Output tokens (mean) |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+             "Seconds (mean) | Input tokens (mean) | Output tokens (mean) | Searches | graphify calls | "
+             "Catalog reads | File reads |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for task_dir in sorted(p for p in run.iterdir() if p.is_dir()):
         for arm in ARMS:
             # Re-grade from the raw outputs so grader fixes apply to earlier runs.
@@ -536,7 +652,9 @@ def cmd_summary(args: argparse.Namespace) -> None:
             lines.append(f"| {task_dir.name} | {arm} | {len(recs)}"
                          f"{f' (+{errors} errored)' if errors else ''} | {mean('score'):.2f} | "
                          f"{mean('cost_usd'):.2f} | {mean('turns'):.1f} | {mean('seconds'):.0f} | "
-                         f"{mean('input_tokens'):,.0f} | {mean('output_tokens'):,.0f} |")
+                         f"{mean('input_tokens'):,.0f} | {mean('output_tokens'):,.0f} | "
+                         f"{tmean(recs, 'search'):.1f} | {tmean(recs, 'graphify'):.1f} | "
+                         f"{tmean(recs, 'catalog_read'):.1f} | {tmean(recs, 'file_read'):.1f} |")
     lines += ["", "Per attempt:", ""]
     for rec_path in sorted(run.glob("*/*/attempt-*/record.json")):
         r = json.loads(rec_path.read_text())
@@ -561,6 +679,9 @@ def main() -> None:
     b = sub.add_parser("bundle")
     scenario_arg(b)
     b.set_defaults(func=cmd_bundle)
+    g = sub.add_parser("graph", help="build the scenario's graphify graph once (code only, no LLM)")
+    scenario_arg(g)
+    g.set_defaults(func=cmd_graph)
     t = sub.add_parser("trials")
     scenario_arg(t)
     t.add_argument("-n", type=int, default=3, help="attempts per task and arm")
